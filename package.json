@@ -1,0 +1,16 @@
+{
+  "name": "ai-prompt-search",
+  "version": "0.1.0",
+  "description": "Search and reuse every prompt you have typed, across every AI coding CLI on your machine. Zero dependencies.",
+  "keywords": ["prompt", "history", "search", "claude-code", "codex", "opencode", "gemini", "cli", "ai"],
+  "license": "Apache-2.0",
+  "author": "rambaarde",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "bin": { "aps": "bin/aps.js", "prompts": "bin/aps.js" },
+  "files": ["bin", "src", "README.md"],
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "start": "node bin/aps.js"
+  }
+}

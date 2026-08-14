@@ -1,0 +1,143 @@
+<div align="center">
+
+# ai-prompt-search
+
+**Every prompt you have ever typed, across every AI CLI, in one searchable picker.**
+
+Stop pressing ↑ two hundred times. Type three words, hit enter, it is on your clipboard.
+
+</div>
+
+```sh
+npm i -g ai-prompt-search
+aps
+```
+
+<div align="center">
+
+`aps` reads the prompt history **already on your machine**. No account, no index to build,
+no daemon, no telemetry, and **zero runtime dependencies**.
+
+</div>
+
+---
+
+## The picker
+
+```
+04-23 18:07 codex     [Nest] 85576 - 04/24/2026, 2:05:38 AM LOG [UptimeService] Current…
+08-05 16:33 claude    ok tell me after the recording is finished put it on the README ok?
+08-09 12:48 claude    I use vitrine there for the video https://github.com/rhyumiranda/…
+08-09 13:16 claude    DO NOT LOGIN, I did not login anythign when the AI recording the s…
+08-09 17:54 claude    then redo the recording fix everything
+08-10 17:39 claude    yeah its fine now, next can we redo the recording? people should s…
+08-13 16:54 claude    nah dont touch the recordings, I just want when I use nacre serve …
+
+  7 shown  ·  ↑↓ move  ·  ⏎ copy  ·  esc quit
+  search recording
+```
+
+Type to filter live. `⏎` copies the highlighted prompt and quits. `esc` leaves.
+
+**The list grows upward.** The newest, most likely match sits at the bottom, directly
+above the cursor — where your eye already is. A top-down list puts the best answer
+furthest away and makes every selection start with a journey.
+
+---
+
+## Why this is not another session-search tool
+
+There are several good tools for searching AI **sessions** — [agentsview](https://github.com/kenn-io/agentsview),
+[cass](https://github.com/Dicklesworthstone/coding_agent_session_search), [ctx](https://github.com/ctxrs/ctx),
+[agent-sessions](https://github.com/jazzyalex/agent-sessions). They all parse session
+transcripts: megabytes of assistant output, tool calls and results, wrapped around the one
+line you typed. They find a **conversation**.
+
+That is a different problem. This one is *"I know roughly what I typed, give me the
+sentence back so I can send it again."*
+
+And it turns out the data for that is already sitting in a much simpler place:
+
+| agent | file | shape |
+|---|---|---|
+| Claude Code | `~/.claude/history.jsonl` | `{ display, timestamp, project }` |
+| Codex | `~/.codex/history.jsonl` | `{ text, ts, session_id }` |
+| opencode | `storage/message/*.json` | one file per message, `role: "user"` |
+
+Those first two **are** the up-arrow buffer, on disk, one record per prompt. No transcript
+parsing, no filtering assistant text back out. Reading them makes the whole problem small:
+twenty thousand prompts indexed in well under a second.
+
+---
+
+## Usage
+
+```sh
+aps                     # the picker
+aps deploy staging      # the picker, with a search already typed
+
+aps -p migration        # print instead of picking
+aps -c migration        # copy the newest match, no UI
+aps -a codex            # one agent only
+aps --agents            # what was found on this machine
+aps --json rollback     # machine-readable, for piping
+```
+
+Piped or redirected, `aps` prints instead of drawing — a TUI that renders escape codes into
+a pipe is a tool you cannot compose with anything.
+
+### Agents are detected, never configured
+
+```
+$ aps --agents
+found   Claude Code  ~/.claude
+found   Codex        ~/.codex
+found   opencode     ~/.local/share/opencode
+```
+
+If the directory is there, it is read. Asking you to declare your agents is asking you to
+maintain a list the filesystem already knows, and to update it every time you try something
+new.
+
+---
+
+## Two things it does on purpose
+
+**Deduplicates.** You retype the same instruction constantly. Twenty identical rows is not
+twenty results — it is one result and a frequency, shown as `x20`. The count is useful on
+its own: it is a list of what you ask for most.
+
+**Every term must match, in any order.** Nobody recalls a prompt verbatim; they recall two
+or three words from it. `AND` across terms is what "I know roughly what I typed" actually
+means. Fuzzy matching would trade a precise tool for an approximate one.
+
+Slash commands, shell escapes and anything under three characters are filtered out. `/clear`
+and `go` are real things you typed and useless things to search for.
+
+---
+
+## Limits, stated
+
+- **opencode prompts can come back abbreviated.** Its message record carries a `summary`;
+  the full text lives in `storage/part/` and needs a second join this does not yet do.
+- **Gemini CLI is not covered.** `~/.gemini/history/` exists but holds no prompt file I
+  could verify — only project markers. Rather than claim coverage that does not work, it is
+  absent. If you know where Gemini persists prompts, that is a welcome issue.
+- **Nothing is written.** This only ever reads. Your history files are not modified, moved,
+  or uploaded.
+
+---
+
+## Requirements
+
+Node ≥ 20. That is the whole list.
+
+Clipboard uses `pbcopy` on macOS, `clip` on Windows, `xclip` on Linux. If none is present,
+the prompt is printed instead of copied — so it still works, it just costs you a
+select-and-copy.
+
+---
+
+## License
+
+Apache-2.0
