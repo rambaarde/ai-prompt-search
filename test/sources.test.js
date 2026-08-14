@@ -46,15 +46,38 @@ async function fixture({ claude = true, codex = true, opencode = true } = {}) {
   }
 
   if (opencode) {
-    const msg = join(home, ".local", "share", "opencode", "storage", "message", "ses_1");
+    // opencode splits one message across two trees: the record, and its text.
+    const store = join(home, ".local", "share", "opencode", "storage");
+    const msg = join(store, "message", "ses_1");
     await mkdir(msg, { recursive: true });
+
+    // `summary` is an object here, exactly as opencode writes it. Reading the
+    // prompt from this field is the bug this fixture exists to prevent.
     await writeFile(join(msg, "msg_a.json"), JSON.stringify({
-      role: "user", summary: "add the rate limit", time: { created: 1_700_000_070_000 },
-      path: { cwd: "/Users/x/code/beacon-api" },
+      id: "msg_a", role: "user", summary: { diffs: [] },
+      time: { created: 1_700_000_070_000 }, path: { cwd: "/Users/x/code/beacon-api" },
     }));
+    await mkdir(join(store, "part", "msg_a"), { recursive: true });
+    await writeFile(join(store, "part", "msg_a", "prt_1.json"),
+      JSON.stringify({ type: "text", text: "add the rate limit" }));
+    // A message can carry several parts, and non-text parts must be ignored.
+    await writeFile(join(store, "part", "msg_a", "prt_2.json"),
+      JSON.stringify({ type: "text", text: "to the api gateway" }));
+    await writeFile(join(store, "part", "msg_a", "prt_3.json"),
+      JSON.stringify({ type: "tool", tool: "bash" }));
+
     // The assistant's own messages live in the same folder and are not ours.
     await writeFile(join(msg, "msg_b.json"), JSON.stringify({
-      role: "assistant", summary: "I added the rate limit", time: { created: 1_700_000_080_000 },
+      id: "msg_b", role: "assistant", time: { created: 1_700_000_080_000 },
+    }));
+    await mkdir(join(store, "part", "msg_b"), { recursive: true });
+    await writeFile(join(store, "part", "msg_b", "prt_1.json"),
+      JSON.stringify({ type: "text", text: "I added the rate limit" }));
+
+    // A user message whose parts were never written yields nothing, rather
+    // than an empty row.
+    await writeFile(join(msg, "msg_c.json"), JSON.stringify({
+      id: "msg_c", role: "user", time: { created: 1_700_000_090_000 },
     }));
   }
 
@@ -99,15 +122,27 @@ test("a truncated or malformed line is skipped, not fatal", async () => {
   await drop(home);
 });
 
-test("opencode yields only the user's messages", async () => {
+test("opencode reads the prompt from its parts, not the message", async () => {
+  // The regression this pins: `summary` on a user message is an object, so a
+  // reader that expects text there returns nothing — and nothing is
+  // indistinguishable from "this agent has no prompts yet".
   const home = await fixture({ claude: false, codex: false });
   const rows = await collect([], home);
 
   assert.equal(rows.length, 1, "the assistant's reply is in the same folder and is not ours");
-  assert.equal(rows[0].text, "add the rate limit");
+  assert.equal(rows[0].text, "add the rate limit\nto the api gateway",
+    "every text part is joined, in written order, and non-text parts are skipped");
   assert.equal(rows[0].agent, "opencode");
   assert.equal(rows[0].project, "beacon-api");
+  assert.equal(rows[0].at, 1_700_000_070, "ms to seconds");
 
+  await drop(home);
+});
+
+test("an opencode message with no text parts yields nothing, not a blank row", async () => {
+  const home = await fixture({ claude: false, codex: false });
+  const rows = await collect([], home);
+  assert.ok(!rows.some((r) => !r.text.trim()), "a partless message must not become an empty prompt");
   await drop(home);
 });
 

@@ -75,37 +75,68 @@ async function codex(base) {
 }
 
 /**
- * opencode: one JSON file per message under `storage/message`.
+ * opencode: a message and its text are two different files.
  *
- * Only `role: "user"` is ours. Note the limit, stated rather than hidden: the
- * message record carries a `summary`, not the full prompt — the body lives in
- * `storage/part/`. Joining those is a second pass this does not yet do, so
- * opencode prompts can come back abbreviated.
+ *   storage/message/<session>/<msgId>.json   { id, role, time, summary, … }
+ *   storage/part/<msgId>/<partId>.json       { type: "text", text }
+ *
+ * The prompt lives in the parts, never in the message. An earlier version read
+ * `summary` off the message and required a string — but `summary` on a user
+ * message is an object (`{ diffs: [] }`), so the check silently rejected every
+ * record and opencode contributed nothing at all. It looked like a working
+ * integration precisely because "no rows" and "no prompts yet" are
+ * indistinguishable from outside. That is the failure a fixture test catches
+ * and a mock never would.
+ *
+ * A message can hold several text parts; they are joined in id order, which is
+ * the order they were written.
  */
 async function opencode(base) {
-  const root = join(home(base), ".local", "share", "opencode", "storage", "message");
-  if (!(await exists(root))) return [];
+  const root = join(home(base), ".local", "share", "opencode", "storage");
+  const messages = join(root, "message");
+  if (!(await exists(messages))) return [];
+
   const out = [];
   const walk = async (dir) => {
     for (const e of await readdir(dir, { withFileTypes: true })) {
       const p = join(dir, e.name);
-      if (e.isDirectory()) await walk(p);
-      else if (e.name.endsWith(".json")) {
-        try {
-          const d = JSON.parse(await readFile(p, "utf8"));
-          if (d.role !== "user") continue;
-          const text = d.summary;
-          if (typeof text === "string" && text.trim()) {
-            out.push(prompt("opencode", (d.time?.created ?? 0) / 1000, lastSegment(d.path?.cwd), text));
-          }
-        } catch {
-          // Skip unreadable records rather than abort the whole scan.
+      if (e.isDirectory()) {
+        await walk(p);
+        continue;
+      }
+      if (!e.name.endsWith(".json")) continue;
+      try {
+        const d = JSON.parse(await readFile(p, "utf8"));
+        if (d.role !== "user" || !d.id) continue;
+        const text = await partsText(join(root, "part", d.id));
+        if (text) {
+          out.push(prompt("opencode", (d.time?.created ?? 0) / 1000, lastSegment(d.path?.cwd), text));
         }
+      } catch {
+        // Skip unreadable records rather than abort the whole scan.
       }
     }
   };
-  await walk(root);
+  await walk(messages);
   return out;
+}
+
+/** Join the text parts of one opencode message, in written order. */
+async function partsText(dir) {
+  if (!(await exists(dir))) return "";
+  const files = (await readdir(dir)).filter((f) => f.endsWith(".json")).sort();
+  const chunks = [];
+  for (const f of files) {
+    try {
+      const part = JSON.parse(await readFile(join(dir, f), "utf8"));
+      if (part.type === "text" && typeof part.text === "string" && part.text.trim()) {
+        chunks.push(part.text);
+      }
+    } catch {
+      // One unreadable part must not lose the rest of the prompt.
+    }
+  }
+  return chunks.join("\n").trim();
 }
 
 /** Last path segment: `/Users/x/code/atlas-web` -> `atlas-web`. */

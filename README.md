@@ -15,7 +15,7 @@ aps
 
 <div align="center">
 
-![tests](https://img.shields.io/badge/tests-25%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-26%20passing-brightgreen)
 ![runtime deps](https://img.shields.io/badge/runtime%20deps-0-blue)
 ![node](https://img.shields.io/badge/node-%E2%89%A520-339933)
 ![license](https://img.shields.io/badge/license-Apache--2.0-blue)
@@ -71,7 +71,7 @@ And it turns out the data for that is already sitting in a much simpler place:
 |---|---|---|
 | Claude Code | `~/.claude/history.jsonl` | `{ display, timestamp, project }` |
 | Codex | `~/.codex/history.jsonl` | `{ text, ts, session_id }` |
-| opencode | `storage/message/*.json` | one file per message, `role: "user"` |
+| opencode | `storage/message/*.json` + `storage/part/<msgId>/*.json` | the record and its text are separate files |
 
 Those first two **are** the up-arrow buffer, on disk, one record per prompt. No transcript
 parsing, no filtering assistant text back out. Reading them makes the whole problem small:
@@ -127,8 +127,6 @@ and `go` are real things you typed and useless things to search for.
 
 ## Limits, stated
 
-- **opencode prompts can come back abbreviated.** Its message record carries a `summary`;
-  the full text lives in `storage/part/` and needs a second join this does not yet do.
 - **Gemini CLI is not covered.** `~/.gemini/history/` exists but holds no prompt file I
   could verify — only project markers. Rather than claim coverage that does not work, it is
   absent. If you know where Gemini persists prompts, that is a welcome issue.
