@@ -65,7 +65,7 @@ if (opts.agent === "__list") {
   const names = new Set(found.map((s) => s.name));
   for (const s of SOURCES) {
     const on = names.has(s.name);
-    console.log(`${on ? "found  " : "absent "} ${s.label.padEnd(12)} ${on ? s.home : ""}`);
+    console.log(`${on ? "found  " : "absent "} ${s.label.padEnd(12)} ${on ? s.dir() : ""}`);
   }
   process.exit(0);
 }

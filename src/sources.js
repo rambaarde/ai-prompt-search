@@ -18,7 +18,14 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-const HOME = homedir();
+/**
+ * The home directory to read from.
+ *
+ * A parameter rather than a constant so the readers can be pointed at a
+ * fixture. Parsing someone else's file format is exactly the code worth
+ * testing, and it cannot be tested if the path is baked in at import time.
+ */
+const home = (base) => base ?? homedir();
 
 /** A prompt, normalised across agents. */
 export const prompt = (agent, at, project, text) => ({ agent, at, project, text });
@@ -43,11 +50,11 @@ async function* jsonl(path) {
  * Claude Code: `~/.claude/history.jsonl`
  * `{ display, timestamp (ms), project, sessionId }`
  */
-async function claude() {
+async function claude(base) {
   const out = [];
-  for await (const d of jsonl(join(HOME, ".claude", "history.jsonl"))) {
+  for await (const d of jsonl(join(home(base), ".claude", "history.jsonl"))) {
     if (typeof d.display === "string" && d.display.trim()) {
-      out.push(prompt("claude", (d.timestamp ?? 0) / 1000, base(d.project), d.display));
+      out.push(prompt("claude", (d.timestamp ?? 0) / 1000, lastSegment(d.project), d.display));
     }
   }
   return out;
@@ -57,9 +64,9 @@ async function claude() {
  * Codex: `~/.codex/history.jsonl`
  * `{ session_id, ts (seconds), text }`
  */
-async function codex() {
+async function codex(base) {
   const out = [];
-  for await (const d of jsonl(join(HOME, ".codex", "history.jsonl"))) {
+  for await (const d of jsonl(join(home(base), ".codex", "history.jsonl"))) {
     if (typeof d.text === "string" && d.text.trim()) {
       out.push(prompt("codex", d.ts ?? 0, "", d.text));
     }
@@ -75,9 +82,9 @@ async function codex() {
  * `storage/part/`. Joining those is a second pass this does not yet do, so
  * opencode prompts can come back abbreviated.
  */
-async function opencode() {
-  const base_ = join(HOME, ".local", "share", "opencode", "storage", "message");
-  if (!(await exists(base_))) return [];
+async function opencode(base) {
+  const root = join(home(base), ".local", "share", "opencode", "storage", "message");
+  if (!(await exists(root))) return [];
   const out = [];
   const walk = async (dir) => {
     for (const e of await readdir(dir, { withFileTypes: true })) {
@@ -89,7 +96,7 @@ async function opencode() {
           if (d.role !== "user") continue;
           const text = d.summary;
           if (typeof text === "string" && text.trim()) {
-            out.push(prompt("opencode", (d.time?.created ?? 0) / 1000, base(d.path?.cwd), text));
+            out.push(prompt("opencode", (d.time?.created ?? 0) / 1000, lastSegment(d.path?.cwd), text));
           }
         } catch {
           // Skip unreadable records rather than abort the whole scan.
@@ -97,17 +104,18 @@ async function opencode() {
       }
     }
   };
-  await walk(base_);
+  await walk(root);
   return out;
 }
 
-const base = (p) => (typeof p === "string" ? p.split("/").filter(Boolean).pop() ?? "" : "");
+/** Last path segment: `/Users/x/code/atlas-web` -> `atlas-web`. */
+const lastSegment = (p) => (typeof p === "string" ? p.split("/").filter(Boolean).pop() ?? "" : "");
 
 /** Every source, with the directory that proves the agent is installed. */
 export const SOURCES = [
-  { name: "claude", label: "Claude Code", home: join(HOME, ".claude"), read: claude },
-  { name: "codex", label: "Codex", home: join(HOME, ".codex"), read: codex },
-  { name: "opencode", label: "opencode", home: join(HOME, ".local", "share", "opencode"), read: opencode },
+  { name: "claude", label: "Claude Code", dir: (b) => join(home(b), ".claude"), read: claude },
+  { name: "codex", label: "Codex", dir: (b) => join(home(b), ".codex"), read: codex },
+  { name: "opencode", label: "opencode", dir: (b) => join(home(b), ".local", "share", "opencode"), read: opencode },
 ];
 
 /**
@@ -117,16 +125,16 @@ export const SOURCES = [
  * asking them to maintain a list that the filesystem already knows, and to
  * update it every time they try a new tool.
  */
-export async function detect() {
+export async function detect(base) {
   const found = await Promise.all(
-    SOURCES.map(async (s) => ((await exists(s.home)) ? s : null)),
+    SOURCES.map(async (s) => ((await exists(s.dir(base))) ? s : null)),
   );
   return found.filter((s) => s !== null);
 }
 
 /** Read every detected agent, or the ones named. */
-export async function collect(only = []) {
-  const sources = (await detect()).filter((s) => only.length === 0 || only.includes(s.name));
-  const lists = await Promise.all(sources.map((s) => s.read()));
+export async function collect(only = [], base) {
+  const sources = (await detect(base)).filter((s) => only.length === 0 || only.includes(s.name));
+  const lists = await Promise.all(sources.map((s) => s.read(base)));
   return lists.flat();
 }

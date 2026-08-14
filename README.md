@@ -15,6 +15,15 @@ aps
 
 <div align="center">
 
+![tests](https://img.shields.io/badge/tests-25%20passing-brightgreen)
+![runtime deps](https://img.shields.io/badge/runtime%20deps-0-blue)
+![node](https://img.shields.io/badge/node-%E2%89%A520-339933)
+![license](https://img.shields.io/badge/license-Apache--2.0-blue)
+
+</div>
+
+<div align="center">
+
 `aps` reads the prompt history **already on your machine**. No account, no index to build,
 no daemon, no telemetry, and **zero runtime dependencies**.
 
