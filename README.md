@@ -14,7 +14,25 @@ Stop pressing ↑ two hundred times. Type three words, hit enter, it is on your 
 
 ```sh
 npm i -g ai-prompt-search
-aps
+aps install          # aliases your agents, once
+exec zsh
+```
+
+<div align="center">
+
+## Press <kbd>ctrl</kbd> + <kbd>p</kbd>
+
+**inside `claude`, `codex` or `opencode` — the picker opens over your live session.**
+
+Type a few words · <kbd>↑</kbd><kbd>↓</kbd> to move · <kbd>enter</kbd> types it in ·
+<kbd>ctrl</kbd>+<kbd>a</kbd> widens the search · <kbd>esc</kbd> closes
+
+</div>
+
+Or on its own, without an agent running:
+
+```sh
+aps                  # the picker, in any terminal
 ```
 
 <div align="center">
@@ -100,6 +118,19 @@ aps run claude          # run it with ctrl-p bound to the picker
 aps --pick              # picker on the terminal, chosen prompt to stdout
 aps --hotkey            # the tmux and shell bindings to install
 ```
+
+### Scoped to the pane you are in
+
+Inside `aps run`, the picker opens on **this conversation only** — not this
+project. Two panes on the same repository are one project and two sessions, and
+the prompt you want back is nearly always the one you typed in the pane you are
+looking at. `^a` widens: this session → this project → everywhere.
+
+The session is learned rather than configured. Nothing in an agent's
+environment says which conversation it is, but the wrapper sees your keystrokes:
+a prompt is submitted with Return, so the first record to appear after one is by
+construction from this pane. Until you have typed something the picker opens on
+the project, because a pane you have not typed in has no conversation to show.
 
 ### Scoped to the project you are in
 

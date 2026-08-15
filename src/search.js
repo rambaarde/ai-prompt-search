@@ -64,14 +64,18 @@ export function inScope(cwd, root) {
  * something else.
  *
  * @param {Array<{agent:string,at:number,cwd:string,project:string,text:string}>} prompts
- * @param {{terms?: string[], limit?: number, scope?: string|null}} options
+ * @param {{terms?: string[], limit?: number, scope?: string|null, session?: string|null}} options
  * @returns {{rows: Array, matched: number}}
  */
-export function search(prompts, { terms = [], limit = 40, scope = null } = {}) {
+export function search(prompts, { terms = [], limit = 40, scope = null, session = null } = {}) {
   const needles = terms.map((t) => t.toLowerCase()).filter(Boolean);
   const byText = new Map();
 
   for (const p of prompts) {
+    // A session is narrower than a project and means something different: two
+    // panes open on the same repository are one project and two conversations.
+    // Without this, searching in one pane returns what you typed in the other.
+    if (session && p.session !== session) continue;
     if (scope && !inScope(p.cwd, scope)) continue;
     const text = flatten(String(p.text ?? ""));
     if (!keep(text)) continue;

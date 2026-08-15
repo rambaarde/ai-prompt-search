@@ -82,16 +82,35 @@ const when = (at) =>
  * @returns {Promise<string|null>} the chosen prompt, or null if cancelled
  */
 export function pick(prompts, {
-  query = "", scope = null, screen = process.stdout, keep = false,
+  query = "", scope = null, session = null, screen = process.stdout, keep = false,
 } = {}) {
   return new Promise((resolve) => {
     let q = query;
     let sel = 0;
     let rows = [];
-    // Scope is toggleable mid-search: you often only learn you need the wider
-    // net after the narrow one comes back empty.
-    let here = scope;
-    const total = () => search(prompts, { limit: Number.MAX_SAFE_INTEGER, scope: here }).matched;
+
+    /**
+     * How wide to look, narrowest first.
+     *
+     * Three levels rather than two, because "this project" is not narrow enough
+     * when two panes are open on the same repository — that is one project and
+     * two conversations, and the prompts you want back are the ones from the
+     * pane you are actually in. The session level only exists when something
+     * knows which session this is, which is the wrapper.
+     *
+     * Widening is one key away because you often only discover you need the
+     * bigger net after the small one comes back empty.
+     */
+    const LEVELS = [
+      ...(session ? [{ key: "session", session, scope }] : []),
+      ...(scope ? [{ key: "project", session: null, scope }] : []),
+      { key: "all", session: null, scope: null },
+    ];
+    let level = 0;
+    const at = () => LEVELS[level];
+
+    const total = () =>
+      search(prompts, { limit: Number.MAX_SAFE_INTEGER, scope: at().scope, session: at().session }).matched;
 
     /**
      * Panel geometry.
@@ -117,7 +136,7 @@ export function pick(prompts, {
 
     const refilter = () => {
       const terms = q.split(/\s+/).filter(Boolean);
-      const found = search(prompts, { terms, limit: box().listMax, scope: here });
+      const found = search(prompts, { terms, limit: box().listMax, scope: at().scope, session: at().session });
       rows = found.rows;
       matched = found.matched;
       if (sel > rows.length - 1) sel = Math.max(0, rows.length - 1);
@@ -158,8 +177,8 @@ export function pick(prompts, {
 
       if (rows.length === 0) {
         const msg = q
-          ? here
-            ? "nothing here — ^a searches every project"
+          ? level < LEVELS.length - 1
+            ? "nothing here — ^a widens the search"
             : "no prompt matches"
           : "type to search";
         out(`${DIM}│${RESET} ${DIM}${fit(msg, body).padEnd(body)}${RESET} ${DIM}│${RESET}`);
@@ -194,7 +213,11 @@ export function pick(prompts, {
 
       // The state that does not fit anywhere else goes into the bottom edge,
       // which costs no row of its own: which project, and the way out of it.
-      const where = here ? `${lastSegment(here)} only` : "all projects";
+      const where = {
+        session: "this session",
+        project: `${lastSegment(scope)} only`,
+        all: "all projects",
+      }[at().key];
       const label = ` ${where} · ^a · esc `;
       const lead = Math.max(1, inner - label.length - 2);
       out(`${DIM}╰${"─".repeat(2)}${label}${"─".repeat(lead)}╯${RESET}`);
@@ -230,7 +253,11 @@ export function pick(prompts, {
       }
       if (key.name === "up" || (key.ctrl && key.name === "p")) sel = Math.max(sel - 1, 0);
       else if (key.name === "down" || (key.ctrl && key.name === "n")) sel = Math.min(sel + 1, rows.length - 1);
-      else if (key.ctrl && key.name === "a") { here = here ? null : scope; sel = 0; refilter(); }
+      else if (key.ctrl && key.name === "a") {
+        level = (level + 1) % LEVELS.length;
+        sel = 0;
+        refilter();
+      }
       else if (key.name === "backspace") { q = q.slice(0, -1); sel = 0; refilter(); }
       else if (key.ctrl && key.name === "u") { q = ""; sel = 0; refilter(); }
       else if (ch && !key.ctrl && !key.meta && ch >= " ") { q += ch; sel = 0; refilter(); }

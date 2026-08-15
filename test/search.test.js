@@ -116,3 +116,37 @@ test("scope filters the search, not merely the paths", () => {
   );
   assert.equal(search(rows, {}).matched, 3, "without a scope nothing is hidden");
 });
+
+// Two panes on one repository are one project and two conversations. Scoping to
+// the project shows you what you typed in the other window, which is the thing
+// that made the picker feel like it was reading someone else's mind.
+test("a session is narrower than a project", () => {
+  const here = join("code", "atlas");
+  const rows = [
+    { ...p("claude", 4, "left pane, second prompt"), cwd: here, session: "L" },
+    { ...p("claude", 3, "right pane, second prompt"), cwd: here, session: "R" },
+    { ...p("claude", 2, "left pane, first prompt"), cwd: here, session: "L" },
+    { ...p("claude", 1, "another project entirely"), cwd: join("code", "beacon"), session: "X" },
+  ];
+
+  assert.deepEqual(
+    search(rows, { scope: here, session: "L" }).rows.map((r) => r.text),
+    ["left pane, second prompt", "left pane, first prompt"],
+    "only this pane's own prompts",
+  );
+  assert.equal(search(rows, { scope: here }).matched, 3, "the project still sees both panes");
+  assert.equal(search(rows, {}).matched, 4, "and no scope sees everything");
+});
+
+test("a prompt with no session is never claimed by one", () => {
+  // Codex sessions without a readable rollout header, and older records, carry
+  // no session. Showing them under someone's session would be a quiet lie.
+  const rows = [
+    { ...p("claude", 2, "belongs to a session"), cwd: "", session: "L" },
+    { ...p("codex", 1, "belongs to no session"), cwd: "", session: "" },
+  ];
+  assert.deepEqual(
+    search(rows, { session: "L" }).rows.map((r) => r.text),
+    ["belongs to a session"],
+  );
+});
