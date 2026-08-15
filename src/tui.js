@@ -5,11 +5,18 @@
  * because the whole appeal of this tool is `npx` with nothing behind it — a
  * dependency tree would cost more than the thing it renders.
  *
- * Two interaction decisions worth naming.
+ * Three interaction decisions worth naming.
  *
- * **It is an omnibox, not a list.** A centred field with its suggestions
- * directly underneath, because that shape is already in everyone's hands —
- * address bar, Spotlight, command palette — so it needs no explaining.
+ * **It is an omnibox, not a list.** A small field floating in the middle of the
+ * screen with its suggestions directly underneath, because that shape is
+ * already in everyone's hands — address bar, Spotlight, command palette — so it
+ * needs no explaining, and the eye starts where the typing happens instead of
+ * scanning a wall of rows for the input line.
+ *
+ * **A surface, not a frame.** Box-drawing characters make a terminal panel look
+ * like a form. A filled background with a shadow beneath it reads as something
+ * floating *over* the session, which is what this is: a thing you open, take one
+ * line from, and dismiss. It also frees the two columns a border would eat.
  *
  * **Filtering is live and local.** Every keystroke re-filters an array already
  * in memory. There is no index to warm and nothing to wait for, which is what
@@ -20,14 +27,46 @@ import { emitKeypressEvents } from "node:readline";
 import { search } from "./search.js";
 
 const ESC = "\x1b";
+const RESET = `${ESC}[0m`;
 const alt = (on) => process.stdout.write(`${ESC}[?1049${on ? "h" : "l"}`);
 const cursor = (on) => process.stdout.write(`${ESC}[?25${on ? "h" : "l"}`);
 const clear = () => process.stdout.write(`${ESC}[2J${ESC}[H`);
-const dim = (s) => `${ESC}[2m${s}${ESC}[0m`;
-const bold = (s) => `${ESC}[1m${s}${ESC}[0m`;
-const invert = (s) => `${ESC}[7m${s}${ESC}[0m`;
 
-const HUE = { claude: `${ESC}[35m`, codex: `${ESC}[36m`, opencode: `${ESC}[33m` };
+const bg = (n) => `${ESC}[48;5;${n}m`;
+const fg = (n) => `${ESC}[38;5;${n}m`;
+
+/**
+ * The palette, as named steps rather than numbers scattered through the render.
+ *
+ * 256-colour rather than the 16 theme colours on purpose: the panel has to look
+ * deliberately like a surface laid over the session, and a theme colour would
+ * make it whatever the user's scheme decided — sometimes indistinguishable from
+ * the terminal behind it, which is the one thing a floating panel must not be.
+ */
+const C = {
+  surface: 235,
+  selected: 238,
+  shadow: 233,
+  rule: 238,
+  text: 252,
+  bright: 255,
+  muted: 245,
+  faint: 240,
+  caret: 250,
+};
+
+/** Each agent gets a hue, carried by the dot at the head of its rows. */
+const HUE = { claude: 175, codex: 110, opencode: 179 };
+
+/**
+ * Printable width, ignoring the colour codes woven through a line.
+ *
+ * Everything below builds strings that switch colour mid-line and never emit a
+ * full reset — a reset would drop the panel background and punch a hole in the
+ * surface. So padding cannot use `String.length`, and this is the one helper
+ * that makes the rest of the layout arithmetic honest.
+ */
+const visible = (s) => s.replace(/\x1b\[[0-9;]*m/g, "").length;
 
 const lastSegment = (p) => (p || "").split("/").filter(Boolean).pop() ?? "";
 
@@ -38,7 +77,7 @@ const when = (at) =>
  * Run the picker.
  *
  * @param {Array} prompts every prompt read from disk
- * @param {{query?: string, agent?: string|null}} opts
+ * @param {{query?: string, scope?: string|null}} opts
  * @returns {Promise<string|null>} the chosen prompt, or null if cancelled
  */
 export function pick(prompts, { query = "", scope = null } = {}) {
@@ -52,93 +91,105 @@ export function pick(prompts, { query = "", scope = null } = {}) {
     const total = () => search(prompts, { limit: Number.MAX_SAFE_INTEGER, scope: here }).matched;
 
     /**
-     * A centred panel, not a full-screen list.
+     * Panel geometry.
      *
-     * The model is an omnibox: one search field floating in the middle of the
-     * screen with its suggestions directly underneath. That shape is worth
-     * copying because it is already in everyone's hands — browser address bar,
-     * Spotlight, every command palette — so nobody has to be told how to use
-     * it, and the eye starts where the typing happens instead of scanning a
-     * wall of rows for the input line.
+     * Narrow and short by design. A browser's suggestion list shows five or six
+     * results at about half the window width, and that restraint is the point:
+     * the answer is nearly always in the first few rows, so a taller panel only
+     * buys more to read past. 68 columns also keeps a prompt readable on the
+     * split-pane terminals people actually run an agent in.
      */
-    const BOX = { tl: "╭", tr: "╮", bl: "╰", br: "╯", h: "─", v: "│" };
     const box = () => {
       const cols = process.stdout.columns || 100;
       const lines = process.stdout.rows || 24;
-      const w = Math.max(46, Math.min(96, cols - 8));
-      const listMax = Math.max(3, Math.min(10, lines - 10));
+      const w = Math.max(44, Math.min(68, cols - 6));
+      const listMax = Math.max(3, Math.min(8, lines - 8));
       return { cols, lines, w, listMax, left: Math.max(0, Math.floor((cols - w) / 2)) };
     };
 
-    const rowsVisible = () => box().listMax;
-
     const refilter = () => {
       const terms = q.split(/\s+/).filter(Boolean);
-      rows = search(prompts, { terms, limit: rowsVisible(), scope: here }).rows;
+      rows = search(prompts, { terms, limit: box().listMax, scope: here }).rows;
       if (sel > rows.length - 1) sel = Math.max(0, rows.length - 1);
     };
 
-    /** Cut to a printable width, accounting for nothing clever — no wide chars. */
+    /** Cut to a printable width. No wide-character handling — none is needed. */
     const fit = (s, n) => (s.length > n ? `${s.slice(0, Math.max(0, n - 1))}…` : s);
 
     const render = () => {
       clear();
-      const { cols, lines, w, left } = box();
-      const inner = w - 2;
+      const { lines, w, left } = box();
       const pad = " ".repeat(left);
-      const out = (s) => process.stdout.write(`${pad}${s}\n`);
+      const body = w - 4; // two columns of breathing room on each side
 
-      // Vertically centred on the panel's own height, biased slightly up:
-      // a box sitting dead-centre reads as lower than centre to most eyes.
-      const panelHeight = rows.length + 6;
-      const top = Math.max(0, Math.floor((lines - panelHeight) / 2) - 1);
+      // The shadow is offset down and right, as a real one is. It is what makes
+      // the panel read as lying over the session rather than cut into it.
+      const shade = `${bg(C.shadow)}  ${RESET}`;
+      let first = true;
+      const out = (content, surface = C.surface) => {
+        const fill = " ".repeat(Math.max(0, w - visible(content)));
+        process.stdout.write(`${pad}${bg(surface)}${fg(C.text)}${content}${fill}${RESET}`);
+        process.stdout.write(first ? "\n" : `${shade}\n`);
+        first = false;
+      };
+
+      // Biased a little above centre: a panel sitting dead-centre reads as low.
+      const height = (rows.length || 1) + 6;
+      const top = Math.max(0, Math.floor((lines - height) / 2) - 1);
       for (let i = 0; i < top; i++) process.stdout.write("\n");
 
-      out(dim(`${BOX.tl}${BOX.h.repeat(inner)}${BOX.tr}`));
+      out("");
 
-      // The search field, with the caret where the typing is.
-      const caret = `${ESC}[7m ${ESC}[0m`;
-      const typed = fit(q, inner - 6);
-      const fieldPad = " ".repeat(Math.max(0, inner - 4 - typed.length - 1));
-      out(`${dim(BOX.v)} ${bold("›")} ${typed}${caret}${fieldPad}${dim(BOX.v)}`);
-      out(dim(`${BOX.v}${BOX.h.repeat(inner)}${BOX.v}`));
+      // The field. A placeholder rather than an empty line, because an empty
+      // field with a caret in it does not say what it searches.
+      const caret = `${bg(C.caret)} ${bg(C.surface)}`;
+      const typed = q
+        ? `${fg(C.bright)}${fit(q, body - 4)}`
+        : `${fg(C.faint)}Search my prompts…`;
+      out(`  ${fg(C.muted)}⌕ ${typed}${q ? caret : ""}`);
+
+      // A rule instead of a border: it separates what you type from what you
+      // get, which is the only division in here that carries meaning.
+      out(`  ${fg(C.rule)}${"─".repeat(body)}`);
 
       if (rows.length === 0) {
         const msg = q
-          ? (here ? "nothing here — ^a searches every project" : "no prompt matches")
+          ? here
+            ? "nothing in this project — ^a searches every project"
+            : "no prompt matches"
           : "type to search";
-        out(`${dim(BOX.v)} ${dim(fit(msg, inner - 2).padEnd(inner - 2))} ${dim(BOX.v)}`);
+        out(`  ${fg(C.faint)}${fit(msg, body)}`);
       }
 
-      // Suggestions run top-down under the field, newest first — the omnibox
-      // order, and the opposite of the old bottom-anchored list.
       rows.forEach((r, i) => {
-        const meta = `${when(r.at)} ${r.agent}`;
-        const times = r.count > 1 ? ` x${r.count}` : "";
-        const room = inner - meta.length - times.length - 5;
-        const body = fit(r.text.replace(/\n/g, " ⏎ "), Math.max(10, room));
-        const line = ` ${body}${times}`;
-        const tail = `${meta} `;
-        const gap = " ".repeat(Math.max(1, inner - 2 - line.length - tail.length));
+        const chosen = i === sel;
+        const surface = chosen ? C.selected : C.surface;
+        const dot = `${fg(HUE[r.agent] ?? C.muted)}●`;
 
-        if (i === sel) {
-          const full = `${line}${gap}${tail}`;
-          out(`${dim(BOX.v)}${invert(fit(full, inner).padEnd(inner))}${dim(BOX.v)}`);
-        } else {
-          const painted = `${HUE[r.agent] ?? ""}${body}${ESC}[0m${dim(times)}`;
-          out(`${dim(BOX.v)} ${painted}${gap}${dim(tail)}${dim(BOX.v)}`);
-        }
+        // The right-hand label mirrors a browser suggestion: metadata normally,
+        // and on the row you have landed on, the action Enter will take.
+        const tail = chosen ? "⏎ copy" : `${r.agent} · ${when(r.at)}`;
+        const times = r.count > 1 ? ` ×${r.count}` : "";
+        const room = body - 2 - tail.length - times.length - 2;
+        const text = fit(r.text.replace(/\n/g, " ⏎ "), Math.max(12, room));
+
+        const head = `  ${dot} ${fg(chosen ? C.bright : C.text)}${text}${fg(C.faint)}${times}`;
+        const gap = " ".repeat(Math.max(1, w - 2 - visible(head) - tail.length));
+        out(`${head}${gap}${fg(chosen ? C.muted : C.faint)}${tail}`, surface);
       });
 
-      out(dim(`${BOX.bl}${BOX.h.repeat(inner)}${BOX.br}`));
+      out("");
 
-      // Hints sit outside the panel: inside, they compete with the results for
-      // the one line the eye is actually scanning.
+      // The footer earns its line by answering the two questions the panel
+      // cannot: how much you are not seeing, and which project you are inside.
       const where = here ? `${lastSegment(here)} only` : "all projects";
-      const hint = rows.length
-        ? `${rows.length} of ${total()} · ${where} · ↑↓ ⏎ copy · ^a scope · esc`
-        : `${total()} prompts · ${where} · ^a widen · esc quit`;
-      out(dim(fit(hint, w).padStart(Math.floor((w + hint.length) / 2))));
+      const shown = rows.length ? `${rows.length} of ${total()}` : `${total()} prompts`;
+      const keys = here ? "^a all projects" : "^a this project";
+      out(`  ${fg(C.faint)}${fit(`${shown} · ${where} · ↑↓ · ${keys} · esc`, body)}`);
+      out("");
+      // Close the shadow off under the panel, indented so it starts where the
+      // offset does.
+      process.stdout.write(`${pad}  ${bg(C.shadow)}${" ".repeat(w)}${RESET}\n`);
     };
 
     const finish = (value) => {
