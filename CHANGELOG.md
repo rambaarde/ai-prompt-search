@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/rambaarde/ai-prompt-search/compare/v0.8.0...v0.9.0) (2026-08-15)
+
+
+### Features
+
+* **install:** find the launcher you already start your agent with ([f39edaf](https://github.com/rambaarde/ai-prompt-search/commit/f39edaf9dd1f58defe4c2295ac401c86e39cec58))
+
 ## [0.8.0](https://github.com/rambaarde/ai-prompt-search/compare/v0.7.0...v0.8.0) (2026-08-15)
 
 
