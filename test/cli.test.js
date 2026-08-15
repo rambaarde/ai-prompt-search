@@ -164,6 +164,37 @@ test("prompts are scoped to the project you are standing in", async () => {
   await drop(home);
 });
 
+// The hotkey surface. The picker half of --pick needs a real terminal and was
+// exercised by hand inside tmux; what is testable here is that it refuses
+// clearly when there is no keyboard, rather than hanging on a pipe forever.
+test("--pick without a keyboard refuses instead of hanging", async () => {
+  const home = await fixture();
+  const { code, stderr } = await aps(["--pick"], home);
+  assert.equal(code, 2);
+  assert.match(stderr, /needs a keyboard/);
+  await drop(home);
+});
+
+test("--hotkey prints bindings that name the right command", async () => {
+  const home = await fixture();
+  const { code, stdout } = await aps(["--hotkey"], home);
+  assert.equal(code, 0);
+  assert.match(stdout, /bind -n M-p display-popup/, "tmux is the only layer that can reach inside an agent");
+  assert.match(stdout, /aps --pick/, "the bindings must call the mode that prints to stdout");
+  assert.match(stdout, /zle -N aps-widget/, "and the shell widget, for a plain prompt");
+  await drop(home);
+});
+
+test("--hotkey for one shell prints only that one", async () => {
+  const home = await fixture();
+  const { stdout } = await aps(["--hotkey", "zsh"], home);
+  assert.match(stdout, /bindkey/);
+  assert.ok(!stdout.includes("display-popup"), "asking for zsh should not print tmux");
+  const bad = await aps(["--hotkey", "fish"], home);
+  assert.equal(bad.code, 2, "an unsupported shell is a usage error, not silence");
+  await drop(home);
+});
+
 test("an empty scope says how to widen it rather than just failing", async () => {
   const home = await fixture();
   const empty = await mkdtemp(join(tmpdir(), "aps-nowhere-"));
