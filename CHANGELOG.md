@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/rambaarde/ai-prompt-search/compare/v0.5.1...v0.6.0) (2026-08-15)
+
+
+### Features
+
+* **theme:** show what the terminal reported, and what was built from it ([77d481e](https://github.com/rambaarde/ai-prompt-search/commit/77d481e759411039ab65cc24bab6a7837bd8e25d))
+
 ## [0.5.1](https://github.com/rambaarde/ai-prompt-search/compare/v0.5.0...v0.5.1) (2026-08-15)
 
 
