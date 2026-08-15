@@ -171,13 +171,12 @@ if (argv[0] === "run") {
       process.exit(127);
     });
   } else {
+    // History is not read here. Loading 23,000 prompts before the agent even
+    // appears would put a second and a half between the command and the
+    // banner, every time, for something you may never press. The wrapper
+    // loads it in the background and re-reads it on each open.
     const { wrap } = await import("../src/wrap.js");
-    const all = await collect();
-    if (all.length === 0) {
-      console.error("no prompt history found — run `aps --agents` to see what was detected");
-      process.exit(1);
-    }
-    process.exit(await wrap(command, all, { scope: projectRoot() }));
+    process.exit(await wrap(command, () => collect(), { scope: projectRoot() }));
   }
 }
 

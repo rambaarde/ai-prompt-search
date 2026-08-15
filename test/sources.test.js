@@ -112,6 +112,31 @@ test("codex history is read, and its timestamps are already seconds", async () =
   await drop(home);
 });
 
+test("a session that appears after the first read is still found", async () => {
+  // Rollout headers are cached, because reading every one of them cost 1.6
+  // seconds and made re-reading history on each hotkey press unaffordable. The
+  // risk that buys is staleness: a session started *during* your session would
+  // be invisible, and its prompts would arrive with no directory attached.
+  const home = await fixture({ claude: false, opencode: false });
+  await collect([], home);
+
+  const sessions = join(home, ".codex", "sessions");
+  await mkdir(sessions, { recursive: true });
+  await writeFile(join(sessions, "rollout-later.jsonl"),
+    `${JSON.stringify({ payload: { id: "s2", cwd: "/work/started-just-now" } })}\n`);
+  await writeFile(join(home, ".codex", "history.jsonl"), [
+    JSON.stringify({ session_id: "s1", ts: 1_700_000_050, text: "deploy to staging" }),
+    JSON.stringify({ session_id: "s2", ts: 1_700_000_099, text: "typed in the newer session" }),
+  ].join("\n"));
+
+  const second = await collect([], home);
+  const fresh = second.find((r) => r.text === "typed in the newer session");
+  assert.ok(fresh, "a prompt written after the first read must appear");
+  assert.equal(fresh.cwd, "/work/started-just-now", "and carry its own session's directory");
+
+  await drop(home);
+});
+
 test("a truncated or malformed line is skipped, not fatal", async () => {
   // Agents append to these files continuously. A reader that throws on a
   // half-written last line is a reader that fails whenever it is most useful.
