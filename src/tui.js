@@ -232,8 +232,12 @@ export function pick(prompts, {
      * three, and every keystroke would be handled once per past invocation. It
      * also leaves stdin alive for the caller, who still needs the keyboard.
      */
+    let done = false;
     const finish = (value) => {
+      if (done) return;
+      done = true;
       process.stdin.off("keypress", onKeypress);
+      process.stdin.off("data", onEscape);
       if (!keep) {
         process.stdin.setRawMode?.(false);
         process.stdin.pause();
@@ -265,9 +269,27 @@ export function pick(prompts, {
       render();
     };
 
+    /**
+     * Close on escape immediately, rather than half a second later.
+     *
+     * `readline` cannot tell the escape key from the first byte of an arrow
+     * key — both start with 0x1b — so it waits to see whether more follows.
+     * That wait is 500ms, and it is spent on every single press of the one key
+     * whose entire job is to make the panel go away instantly. Dismissing
+     * something should never feel like it is thinking about it.
+     *
+     * A terminal writes a real escape sequence as one chunk, so a lone 0x1b
+     * arriving by itself is the key, not the beginning of anything. Reading it
+     * straight from the byte stream skips the disambiguation entirely.
+     */
+    const onEscape = (buf) => {
+      if (buf.length === 1 && buf[0] === 0x1b) finish(null);
+    };
+
     emitKeypressEvents(process.stdin);
     process.stdin.setRawMode?.(true);
     process.stdin.resume();
+    process.stdin.on("data", onEscape);
     alt(screen, true);
     cursor(screen, false);
     refilter();
