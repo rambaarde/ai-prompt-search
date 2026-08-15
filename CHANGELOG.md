@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/rambaarde/ai-prompt-search/compare/v0.2.2...v0.3.0) (2026-08-15)
+
+
+### Features
+
+* **hotkey:** a keybinding that reaches inside a running agent ([bada135](https://github.com/rambaarde/ai-prompt-search/commit/bada13569c4d62521d5cf061cca54f675b0dc5c1))
+
 ## [0.2.2](https://github.com/rambaarde/ai-prompt-search/compare/v0.2.1...v0.2.2) (2026-08-15)
 
 
