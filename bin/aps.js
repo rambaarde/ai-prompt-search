@@ -16,6 +16,8 @@ import { search } from "../src/search.js";
 import { pick } from "../src/tui.js";
 import { spawn, execFileSync } from "node:child_process";
 import { platform } from "node:process";
+import { openSync } from "node:fs";
+import { WriteStream } from "node:tty";
 
 /**
  * The project you are standing in: the git root, or the working directory.
@@ -47,6 +49,9 @@ const HELP = `aps — your prompts, across every AI CLI
   aps --agents           which agents were found on this machine
   aps --json <words>     machine-readable, for piping
 
+  aps --pick             picker on the terminal, chosen prompt to stdout
+  aps --hotkey           print the tmux and shell bindings to install
+
 In the picker: ↑↓ move · ⏎ copy and quit · esc quit · ctrl-u clear · ctrl-a scope
 
 By default you only see prompts typed in the current project. Prompts from your
@@ -54,8 +59,50 @@ other work stay out of sight until you ask for them.
 
 Agents are detected, never configured: if the directory is there, it is read.`;
 
+/**
+ * The bindings, as text to paste rather than a file we write into your dotfiles.
+ *
+ * There is one hard limitation worth stating plainly, because it decides the
+ * whole design: while an agent is running it holds the keyboard in raw mode.
+ * Nothing can inject a keystroke into it — not a shell binding, not a daemon.
+ * A hotkey that works *inside* a session therefore has to come from the layer
+ * above it, which is the terminal multiplexer. That is what the tmux binding is,
+ * and why there is no single cross-platform answer.
+ *
+ * The shell widget is the other half: at a prompt, not inside an agent, where
+ * the shell does own the keyboard.
+ */
+const HOTKEY = {
+  tmux: `# ~/.tmux.conf — alt-p opens the picker over whatever is running,
+# and types the prompt you choose straight into it.
+#
+# The popup is not a pane, so the agent underneath stays the active pane and
+# send-keys with no target reaches it. -l sends the text literally: quotes,
+# backticks and $ arrive as themselves rather than as shell syntax.
+bind -n M-p display-popup -E -w 76 -h 16 'p=$(aps --pick) && tmux send-keys -l -- "$p"'
+
+# Then: tmux source-file ~/.tmux.conf`,
+
+  zsh: `# ~/.zshrc — alt-p at a shell prompt puts the chosen prompt on the line.
+# This one cannot reach inside a running agent; nothing can. It is for the
+# shell itself.
+aps-widget() {
+  local chosen
+  chosen=$(aps --pick </dev/tty) || return 0
+  LBUFFER="$LBUFFER$chosen"
+  zle reset-prompt
+}
+zle -N aps-widget
+bindkey '^[p' aps-widget
+
+# Then: exec zsh`,
+
+  bash: `# ~/.bashrc — alt-p at a shell prompt.
+bind -x '"\\ep": "READLINE_LINE=$(aps --pick </dev/tty); READLINE_POINT=\${#READLINE_LINE}"'`,
+};
+
 const argv = process.argv.slice(2);
-const opts = { copy: false, limit: 40, agent: null, json: false, print: false, all: false };
+const opts = { copy: false, limit: 40, agent: null, json: false, print: false, all: false, pick: false };
 const terms = [];
 
 for (let i = 0; i < argv.length; i++) {
@@ -64,6 +111,17 @@ for (let i = 0; i < argv.length; i++) {
   else if (a === "-c" || a === "--copy") opts.copy = true;
   else if (a === "-p" || a === "--print") opts.print = true;
   else if (a === "--json") opts.json = true;
+  else if (a === "--pick") opts.pick = true;
+  else if (a === "--hotkey") {
+    const which = argv[i + 1] && !argv[i + 1].startsWith("-") ? argv[++i] : null;
+    const parts = which ? [HOTKEY[which]] : [HOTKEY.tmux, HOTKEY.zsh, HOTKEY.bash];
+    if (parts.some((p) => !p)) {
+      console.error(`unknown shell: ${which} — try tmux, zsh or bash`);
+      process.exit(2);
+    }
+    console.log(parts.join("\n\n"));
+    process.exit(0);
+  }
   else if (a === "-A" || a === "--all") opts.all = true;
   else if (a === "-n") opts.limit = Number(argv[++i]) || 40;
   else if (a === "-a" || a === "--agent") opts.agent = argv[++i];
@@ -80,7 +138,26 @@ for (let i = 0; i < argv.length; i++) {
  * cannot be composed with anything.
  */
 const interactive =
-  !opts.print && !opts.json && !opts.copy && process.stdin.isTTY && process.stdout.isTTY;
+  !opts.print && !opts.json && !opts.copy && !opts.pick &&
+  process.stdin.isTTY && process.stdout.isTTY;
+
+/**
+ * The terminal to draw the picker on when stdout has been taken.
+ *
+ * A binding runs `chosen=$(aps --pick)`, which makes stdout a pipe. The panel
+ * cannot go there — it would end up in the variable instead of on the screen —
+ * so it goes to /dev/tty, which is the terminal regardless of what stdout was
+ * pointed at. Keystrokes still arrive on stdin, which the shell leaves alone.
+ */
+function screenForPicker() {
+  if (process.stdout.isTTY) return process.stdout;
+  try {
+    return new WriteStream(openSync("/dev/tty", "w"));
+  } catch {
+    console.error("--pick needs a terminal to draw on, and /dev/tty is not available here");
+    process.exit(2);
+  }
+}
 
 if (opts.agent === "__list") {
   const found = await detect();
@@ -110,6 +187,23 @@ function toClipboard(text, onDone) {
   });
   child.stdin.end(text);
   child.on("close", onDone);
+}
+
+if (opts.pick) {
+  if (!process.stdin.isTTY) {
+    console.error("--pick needs a keyboard: run it from a binding, not a pipe");
+    process.exit(2);
+  }
+  const chosen = await pick(prompts, {
+    query: terms.join(" "),
+    scope: opts.all ? null : projectRoot(),
+    screen: screenForPicker(),
+  });
+  // Nothing chosen exits non-zero so a binding can tell "escaped" from "picked
+  // an empty line" and leave the command line untouched.
+  if (!chosen) process.exit(1);
+  process.stdout.write(chosen);
+  process.exit(0);
 }
 
 if (interactive) {

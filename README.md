@@ -91,6 +91,9 @@ aps -c migration        # copy the newest match, no UI
 aps -a codex            # one agent only
 aps --agents            # what was found on this machine
 aps --json rollback     # machine-readable, for piping
+
+aps --pick              # picker on the terminal, chosen prompt to stdout
+aps --hotkey            # the tmux and shell bindings to install
 ```
 
 ### Scoped to the project you are in
@@ -110,6 +113,35 @@ reachable with `-A`.
 
 Piped or redirected, `aps` prints instead of drawing — a TUI that renders escape codes into
 a pipe is a tool you cannot compose with anything.
+
+### A hotkey, and the honest limit on one
+
+```sh
+aps --hotkey            # print the bindings; --hotkey tmux|zsh|bash for one
+```
+
+**Inside a running agent, only tmux can do this.** While Claude Code or Codex is
+running it holds the keyboard in raw mode, and nothing outside it can inject a
+keystroke — not a shell binding, not a background daemon. A hotkey that works
+*while you are talking to an agent* has to come from the layer above it. That
+layer is your multiplexer:
+
+```tmux
+bind -n M-p display-popup -E -w 76 -h 16 'p=$(aps --pick) && tmux send-keys -l -- "$p"'
+```
+
+`alt-p` opens the picker in a popup over whatever is running, and the prompt you
+choose is typed into it. The popup is not a pane, so the agent underneath stays
+the active pane and `send-keys` reaches it; `-l` sends the text literally, so
+quotes, backticks and `$` arrive as themselves.
+
+**At a shell prompt**, where the shell does own the keyboard, `aps --hotkey zsh`
+prints a `zle` widget that puts the chosen prompt on the command line.
+
+Both rest on `aps --pick`: the panel is drawn on `/dev/tty` and the chosen prompt
+goes to stdout, so `chosen=$(aps --pick)` gets the text rather than the
+interface. It exits non-zero when you press escape, so a binding can tell
+*cancelled* from *picked nothing*.
 
 ### Agents are detected, never configured
 

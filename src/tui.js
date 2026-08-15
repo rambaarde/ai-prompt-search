@@ -29,9 +29,9 @@ import { search } from "./search.js";
 
 const ESC = "\x1b";
 const RESET = `${ESC}[0m`;
-const alt = (on) => process.stdout.write(`${ESC}[?1049${on ? "h" : "l"}`);
-const cursor = (on) => process.stdout.write(`${ESC}[?25${on ? "h" : "l"}`);
-const clear = () => process.stdout.write(`${ESC}[2J${ESC}[H`);
+const alt = (out, on) => out.write(`${ESC}[?1049${on ? "h" : "l"}`);
+const cursor = (out, on) => out.write(`${ESC}[?25${on ? "h" : "l"}`);
+const clear = (out) => out.write(`${ESC}[2J${ESC}[H`);
 
 const bg = (n) => `${ESC}[48;5;${n}m`;
 const fg = (n) => `${ESC}[38;5;${n}m`;
@@ -77,11 +77,17 @@ const when = (at) =>
 /**
  * Run the picker.
  *
+ * `out` is the terminal to draw on, and it is a parameter for one reason: a
+ * shell or tmux binding has to capture the chosen prompt from stdout, which
+ * means stdout is a pipe and cannot also carry the interface. Handing the
+ * picker an explicit handle on /dev/tty separates the two — the panel goes to
+ * the screen, the answer goes to whoever asked.
+ *
  * @param {Array} prompts every prompt read from disk
- * @param {{query?: string, scope?: string|null}} opts
+ * @param {{query?: string, scope?: string|null, screen?: NodeJS.WriteStream}} opts
  * @returns {Promise<string|null>} the chosen prompt, or null if cancelled
  */
-export function pick(prompts, { query = "", scope = null } = {}) {
+export function pick(prompts, { query = "", scope = null, screen = process.stdout } = {}) {
   return new Promise((resolve) => {
     let q = query;
     let sel = 0;
@@ -101,8 +107,8 @@ export function pick(prompts, { query = "", scope = null } = {}) {
      * split-pane terminals people actually run an agent in.
      */
     const box = () => {
-      const cols = process.stdout.columns || 100;
-      const lines = process.stdout.rows || 24;
+      const cols = screen.columns || 100;
+      const lines = screen.rows || 24;
       const w = Math.max(44, Math.min(68, cols - 6));
       const listMax = Math.max(3, Math.min(8, lines - 8));
       return { cols, lines, w, listMax, left: Math.max(0, Math.floor((cols - w) / 2)) };
@@ -118,7 +124,7 @@ export function pick(prompts, { query = "", scope = null } = {}) {
     const fit = (s, n) => (s.length > n ? `${s.slice(0, Math.max(0, n - 1))}…` : s);
 
     const render = () => {
-      clear();
+      clear(screen);
       const { lines, w, left } = box();
       const pad = " ".repeat(left);
       const body = w - 4; // two columns of breathing room on each side
@@ -129,15 +135,15 @@ export function pick(prompts, { query = "", scope = null } = {}) {
       let first = true;
       const out = (content, surface = C.surface) => {
         const fill = " ".repeat(Math.max(0, w - visible(content)));
-        process.stdout.write(`${pad}${bg(surface)}${fg(C.text)}${content}${fill}${RESET}`);
-        process.stdout.write(first ? "\n" : `${shade}\n`);
+        screen.write(`${pad}${bg(surface)}${fg(C.text)}${content}${fill}${RESET}`);
+        screen.write(first ? "\n" : `${shade}\n`);
         first = false;
       };
 
       // Biased a little above centre: a panel sitting dead-centre reads as low.
       const height = (rows.length || 1) + 6;
       const top = Math.max(0, Math.floor((lines - height) / 2) - 1);
-      for (let i = 0; i < top; i++) process.stdout.write("\n");
+      for (let i = 0; i < top; i++) screen.write("\n");
 
       out("");
 
@@ -190,22 +196,22 @@ export function pick(prompts, { query = "", scope = null } = {}) {
       out("");
       // Close the shadow off under the panel, indented so it starts where the
       // offset does.
-      process.stdout.write(`${pad}  ${bg(C.shadow)}${" ".repeat(w)}${RESET}\n`);
+      screen.write(`${pad}  ${bg(C.shadow)}${" ".repeat(w)}${RESET}\n`);
     };
 
     const finish = (value) => {
       process.stdin.setRawMode?.(false);
       process.stdin.pause();
-      cursor(true);
-      alt(false);
+      cursor(screen, true);
+      alt(screen, false);
       resolve(value);
     };
 
     emitKeypressEvents(process.stdin);
     process.stdin.setRawMode?.(true);
     process.stdin.resume();
-    alt(true);
-    cursor(false);
+    alt(screen, true);
+    cursor(screen, false);
     refilter();
     render();
 
