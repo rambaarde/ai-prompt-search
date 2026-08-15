@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/rambaarde/ai-prompt-search/compare/v0.2.1...v0.2.2) (2026-08-15)
+
+
+### Bug Fixes
+
+* **npm:** name the repository, so provenance can verify it ([736b68b](https://github.com/rambaarde/ai-prompt-search/commit/736b68ba3243c8db2f430f395cb6352ae385ffb8))
+
 ## [0.2.1](https://github.com/rambaarde/ai-prompt-search/compare/v0.2.0...v0.2.1) (2026-08-15)
 
 
