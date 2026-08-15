@@ -119,11 +119,11 @@ function repairSpawnHelper() {
  * Run a command with the picker bound to a hotkey.
  *
  * @param {string[]} command the agent to run, e.g. ["claude"]
- * @param {Array} prompts every prompt read from disk
+ * @param {() => Promise<Array>} load reads every prompt, called on each open
  * @param {{scope?: string|null}} opts
  * @returns {Promise<number>} the command's exit code
  */
-export async function wrap(command, prompts, { scope = null } = {}) {
+export async function wrap(command, load, { scope = null } = {}) {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     console.error("aps: the wrapper needs a terminal — run it from one, not a pipe");
     return 2;
@@ -190,6 +190,11 @@ export async function wrap(command, prompts, { scope = null } = {}) {
     if (picking) return;
     if (isHotkey(buf)) {
       picking = true;
+      // Read again, every time. The first version took one snapshot at startup,
+      // so a prompt you typed a minute ago was not in the list — which is a
+      // strange thing for a tool whose entire purpose is finding what you just
+      // typed. Rescanning is affordable because the expensive part is cached.
+      const prompts = await load().catch(() => []);
       // The picker uses the alternate screen buffer, so leaving it restores
       // whatever the agent had drawn — no repainting on our part.
       const chosen = await pick(prompts, { scope, keep: true, palette }).catch(() => null);
@@ -207,6 +212,12 @@ export async function wrap(command, prompts, { scope = null } = {}) {
   process.stdin.setRawMode(true);
   process.stdin.resume();
   process.stdin.on("data", onKey);
+
+  // Warm the caches while you are reading the agent's banner, so the first
+  // hotkey press is as quick as the rest. Deliberately not awaited: making
+  // somebody wait a second and a half for their agent to start, in case they
+  // later press a key, is the wrong trade.
+  load().catch(() => {});
 
   return new Promise((resolve) => {
     term.onExit(({ exitCode }) => {

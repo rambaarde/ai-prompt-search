@@ -86,7 +86,22 @@ async function codex(base) {
   return out;
 }
 
-/** session id -> the directory that session ran in, from the rollout header. */
+/**
+ * session id -> the directory that session ran in, from the rollout header.
+ *
+ * Remembered between calls, because reading this is the single most expensive
+ * thing the package does: 1.6 seconds against four thousand prompts, versus
+ * 30ms for the whole of Claude's history. Every rollout file was being opened
+ * to read one line of it.
+ *
+ * A rollout's first line is written once, when the session starts, and never
+ * changes — so a file already read can be skipped forever, and a rescan only
+ * pays for sessions that appeared since. That is what makes it affordable to
+ * re-read history every time the picker opens, which is what makes a prompt
+ * typed a moment ago actually be there.
+ */
+const rolloutCache = new Map(); // absolute path -> { id, cwd } | null
+
 async function codexSessionDirs(root) {
   const map = new Map();
   if (!(await exists(root))) return map;
@@ -95,14 +110,23 @@ async function codexSessionDirs(root) {
       const p = join(dir, e.name);
       if (e.isDirectory()) { await walk(p); continue; }
       if (!e.name.startsWith("rollout-") || !e.name.endsWith(".jsonl")) continue;
-      try {
-        const head = (await readFile(p, "utf8")).split("\n", 1)[0];
-        const d = JSON.parse(head);
-        const rec = d.payload ?? d;
-        if (rec.id && rec.cwd) map.set(rec.id, rec.cwd);
-      } catch {
-        // A session without a readable header simply has no directory.
+
+      if (!rolloutCache.has(p)) {
+        let record = null;
+        try {
+          const head = (await readFile(p, "utf8")).split("\n", 1)[0];
+          const d = JSON.parse(head);
+          const rec = d.payload ?? d;
+          if (rec.id && rec.cwd) record = { id: rec.id, cwd: rec.cwd };
+        } catch {
+          // A session without a readable header simply has no directory, and
+          // is cached as such so it is not reopened on every scan.
+        }
+        rolloutCache.set(p, record);
       }
+
+      const known = rolloutCache.get(p);
+      if (known) map.set(known.id, known.cwd);
     }
   };
   await walk(root);
