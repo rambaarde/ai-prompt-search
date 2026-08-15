@@ -118,9 +118,17 @@ a pipe is a tool you cannot compose with anything.
 ### A hotkey, inside the agent
 
 ```sh
-aps run claude          # ctrl-p opens the picker over the live session
-alias claude='aps run claude'
+aps install             # then just keep typing `claude`, `codex`, `opencode`
 ```
+
+That writes one alias per agent you actually have, into your shell's rc file,
+inside a fenced block it can rewrite or remove. Nobody is going to retype their
+muscle memory as `aps run claude` — so it aliases the names you already use, and
+`aps uninstall` puts the file back. `aps install --print` shows the block without
+touching anything.
+
+An alias rather than a shim on `PATH`, deliberately: a shim would also intercept
+scripts and CI, where a keyboard interceptor has no business being.
 
 Press **ctrl-p** mid-conversation: the panel takes over the screen, you type a
 few words, and the prompt you pick is typed into the agent as if you had typed
@@ -131,6 +139,13 @@ raw mode, so nothing outside it can see a keypress — `aps run` gives the agent
 pseudo-terminal it owns and keeps only the keyboard. Everything that is not the
 hotkey is forwarded byte-for-byte, and the agent keeps its own output, colour
 and resizing.
+
+**It takes your colours, not its own.** The panel asks the terminal for its
+actual background and foreground (`OSC 11` / `OSC 10`) and derives every layer
+from them, so it adapts to whatever scheme you run — light, dark, Solarized,
+anything. The agent dots use your palette's own magenta, cyan and yellow. A
+terminal that will not answer gets a dark default, after a 120 ms wait that
+cannot block startup.
 
 That needs a pty, which Node cannot allocate on its own, so `node-pty` is an
 **optional** dependency: `npm i -g ai-prompt-search` still installs nothing
