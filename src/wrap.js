@@ -34,8 +34,51 @@ import { chmodSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 
-/** ctrl-p. Chosen because agent TUIs rarely bind it — unlike ctrl-r. */
-const HOTKEY = 0x10;
+/**
+ * Recognising ctrl-p, whatever your terminal decided that means.
+ *
+ * There is no single byte sequence for a modified key. A terminal may send:
+ *
+ *   0x10                  the legacy control byte, and the only form for decades
+ *   ESC [ 112 ; 5 u       the Kitty keyboard protocol, keycode 'p', ctrl held
+ *   ESC [ 27 ; 5 ; 112 ~  xterm's modifyOtherKeys, same idea, different shape
+ *
+ * Which one arrives is decided at runtime, by negotiation between the terminal
+ * and the program it is running — so an agent that asks for enhanced keys turns
+ * an interception that worked yesterday into one that silently forwards.
+ *
+ * Matching only 0x10 is what made this appear broken in a plain terminal while
+ * working under tmux, which normalises keys back to the legacy encoding before
+ * the pane ever sees them. Testing inside a multiplexer hid the whole problem.
+ * Every developer has a different setup; the fix is to accept every encoding,
+ * not to assume mine.
+ *
+ * Modifier encoding is shared by the last two: the number is 1 + a bitmask,
+ * where 4 is control.
+ */
+const CTRL = 0b100;
+const KEY_P = 0x70;
+const KITTY = /^\x1b\[(\d+)(?::\d+)?(?:;(\d+))?(?::\d+)?u$/;
+const XTERM = /^\x1b\[27;(\d+);(\d+)~$/;
+
+export function isHotkey(buf) {
+  if (buf.length === 1 && buf[0] === 0x10) return true;
+  const s = buf.toString("latin1");
+
+  const kitty = KITTY.exec(s);
+  if (kitty) {
+    const mods = Number(kitty[2] ?? 1) - 1;
+    return Number(kitty[1]) === KEY_P && (mods & CTRL) !== 0;
+  }
+
+  const xterm = XTERM.exec(s);
+  if (xterm) {
+    const mods = Number(xterm[1]) - 1;
+    return Number(xterm[2]) === KEY_P && (mods & CTRL) !== 0;
+  }
+
+  return false;
+}
 
 const MISSING = `aps: the hotkey wrapper needs an optional module that is not installed.
 
@@ -135,7 +178,7 @@ export async function wrap(command, prompts, { scope = null } = {}) {
 
   const onKey = async (buf) => {
     if (picking) return;
-    if (buf.length === 1 && buf[0] === HOTKEY) {
+    if (isHotkey(buf)) {
       picking = true;
       // The picker uses the alternate screen buffer, so leaving it restores
       // whatever the agent had drawn — no repainting on our part.

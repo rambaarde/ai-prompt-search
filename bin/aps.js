@@ -105,6 +105,40 @@ bind -x '"\\ep": "READLINE_LINE=$(aps --pick </dev/tty); READLINE_POINT=\${#READ
 const argv = process.argv.slice(2);
 
 /**
+ * `aps --keys` — show what this terminal actually sends.
+ *
+ * A modified keypress has no single encoding: the same ctrl-p arrives as one
+ * byte, as a Kitty-protocol escape, or as an xterm modifyOtherKeys escape,
+ * depending on the terminal and on what the running program negotiated. That
+ * makes "the hotkey does nothing" impossible to diagnose from a description,
+ * and impossible to reproduce on a different machine.
+ *
+ * So rather than guess at someone's setup, this prints the bytes. It also says
+ * whether the wrapper would recognise what you pressed, which is the actual
+ * question being asked.
+ */
+if (argv[0] === "--keys") {
+  if (!process.stdin.isTTY) {
+    console.error("aps --keys needs a terminal — run it directly, not through a pipe");
+    process.exit(2);
+  }
+  const { isHotkey } = await import("../src/wrap.js");
+  console.log("press keys to see what your terminal sends — ctrl-c to stop\n");
+  process.stdin.setRawMode(true);
+  process.stdin.resume();
+  process.stdin.on("data", (buf) => {
+    if (buf.length === 1 && buf[0] === 0x03) {
+      process.stdin.setRawMode(false);
+      process.exit(0);
+    }
+    const hex = [...buf].map((b) => b.toString(16).padStart(2, "0")).join(" ");
+    const shown = JSON.stringify(buf.toString("latin1")).slice(1, -1);
+    const match = isHotkey(buf) ? "  <- the wrapper opens the picker on this" : "";
+    process.stdout.write(`${hex.padEnd(24)} ${shown.padEnd(18)}${match}\r\n`);
+  });
+}
+
+/**
  * `aps run <command…>` — run something with the picker on a hotkey.
  *
  * Handled before flag parsing, and everything after `run` is the command's,
