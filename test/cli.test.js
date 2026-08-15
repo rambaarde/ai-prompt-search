@@ -64,6 +64,18 @@ test("piped output prints instead of starting the picker", async () => {
   await drop(home);
 });
 
+test("falling back to a list says why, so the picker does not look missing", async () => {
+  // Run inside an agent's own shell runner there is no terminal at all, so the
+  // picker cannot draw and a list appears instead. Silently, that reads as "this
+  // tool has no picker" rather than "the picker had nowhere to go".
+  const home = await fixture();
+  const { stderr } = await aps(["-A"], home);
+  assert.match(stderr, /the picker needs a terminal/);
+  const asked = await aps(["-A", "-p"], home);
+  assert.ok(!asked.stderr.includes("needs a terminal"), "-p asked for a list; do not explain it");
+  await drop(home);
+});
+
 test("a search narrows the output and every term must match", async () => {
   const home = await fixture();
   const { stdout } = await aps(["-A", "-p", "portal", "tests"], home);

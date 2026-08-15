@@ -249,6 +249,19 @@ if (opts.copy) {
     console.log(`${dim(when)} ${HUE[r.agent] ?? ""}${r.agent.padEnd(8)}\x1b[0m ${body}${times}`);
   }
   console.error(dim(`\n${matched} unique prompt(s)${terms.length ? ` matching “${terms.join(" ")}”` : ""}`));
+
+  // Say why this was a list and not the picker.
+  //
+  // Falling back silently is what makes a working tool look like a broken one:
+  // you type `aps`, a wall of text appears, and there is nothing to tell you
+  // that the picker exists and simply had nowhere to draw. This happens inside
+  // an agent's own shell runner, which has no terminal attached at all — not
+  // stdin, not stdout, not even /dev/tty — so no TUI can render there, and no
+  // amount of flags will change that.
+  if (!opts.print && !opts.json && !opts.copy) {
+    const missing = !process.stdin.isTTY ? "no keyboard is attached here" : "output is being captured";
+    console.error(dim(`the picker needs a terminal — ${missing}, so this printed instead`));
+  }
 }
 
 }
