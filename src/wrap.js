@@ -30,6 +30,7 @@
  * starts, not once you are three prompts deep.
  */
 import { pick } from "./tui.js";
+import { inScope } from "./search.js";
 import { chmodSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
@@ -167,6 +168,35 @@ export async function wrap(command, load, { scope = null } = {}) {
   let picking = false;
   const held = [];
 
+  /**
+   * Which conversation is this pane?
+   *
+   * Two panes open on the same repository are one project and two sessions, and
+   * scoping to the project shows you what you typed in the other window. Every
+   * agent records a session id against each prompt, so the filter exists — the
+   * problem is knowing which id belongs to the child we started, since nothing
+   * in its environment says so.
+   *
+   * The wrapper knows something nothing else does: it sees the keystrokes. A
+   * prompt is submitted with Return, so the first record to appear in the
+   * history after we forward one is, by construction, from this pane. The id is
+   * learned from what you type rather than guessed.
+   *
+   * Until you have typed something there is no session to scope to, and the
+   * picker opens on the project instead — the right fallback, since a pane you
+   * have not typed in has no conversation of its own to show.
+   */
+  let session = null;
+  let submittedAt = 0;
+
+  const learnSession = (prompts) => {
+    if (session || !submittedAt) return;
+    const mine = prompts
+      .filter((p) => p.session && p.at >= submittedAt - 2 && inScope(p.cwd, scope))
+      .sort((a, b) => b.at - a.at)[0];
+    if (mine) session = mine.session;
+  };
+
   term.onData((d) => {
     if (picking) held.push(d);
     else process.stdout.write(d);
@@ -190,9 +220,10 @@ export async function wrap(command, load, { scope = null } = {}) {
       // strange thing for a tool whose entire purpose is finding what you just
       // typed. Rescanning is affordable because the expensive part is cached.
       const prompts = await load().catch(() => []);
+      learnSession(prompts);
       // The picker uses the alternate screen buffer, so leaving it restores
       // whatever the agent had drawn — no repainting on our part.
-      const chosen = await pick(prompts, { scope, keep: true }).catch(() => null);
+      const chosen = await pick(prompts, { scope, session, keep: true }).catch(() => null);
       picking = false;
       process.stdout.write(held.join(""));
       held.length = 0;
@@ -201,6 +232,9 @@ export async function wrap(command, load, { scope = null } = {}) {
       if (chosen) term.write(chosen);
       return;
     }
+    // A Return submits a prompt. Note when, so the record that appears next can
+    // be recognised as this pane's.
+    if (buf.includes(0x0d) || buf.includes(0x0a)) submittedAt = Date.now() / 1000;
     term.write(buf.toString("binary"));
   };
 

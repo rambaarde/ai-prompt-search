@@ -31,12 +31,15 @@ const home = (base) => base ?? homedir();
  * A prompt, normalised across agents.
  *
  * `cwd` is the full working directory the prompt was typed in; `project` is
- * just its last segment, for display. The full path is kept because scoping
+ * just its last segment, for display. `session` is the conversation it was
+ * typed into — two panes open on the same repository are the same project and
+ * different sessions, which is the difference between seeing your own last
+ * prompt and seeing the one you typed in the other window. The full path is kept because scoping
  * needs to know whether a prompt belongs to the repository you are standing in,
  * and two unrelated checkouts can share a basename.
  */
-export const prompt = (agent, at, cwd, text) =>
-  ({ agent, at, cwd: cwd ?? "", project: lastSegment(cwd), text });
+export const prompt = (agent, at, cwd, text, session = "") =>
+  ({ agent, at, cwd: cwd ?? "", project: lastSegment(cwd), text, session });
 
 const exists = (p) => stat(p).then(() => true, () => false);
 
@@ -62,7 +65,7 @@ async function claude(base) {
   const out = [];
   for await (const d of jsonl(join(home(base), ".claude", "history.jsonl"))) {
     if (typeof d.display === "string" && d.display.trim()) {
-      out.push(prompt("claude", (d.timestamp ?? 0) / 1000, d.project, d.display));
+      out.push(prompt("claude", (d.timestamp ?? 0) / 1000, d.project, d.display, d.sessionId ?? ""));
     }
   }
   return out;
@@ -80,7 +83,7 @@ async function codex(base) {
   const out = [];
   for await (const d of jsonl(join(home(base), ".codex", "history.jsonl"))) {
     if (typeof d.text === "string" && d.text.trim()) {
-      out.push(prompt("codex", d.ts ?? 0, cwdOf.get(d.session_id), d.text));
+      out.push(prompt("codex", d.ts ?? 0, cwdOf.get(d.session_id), d.text, d.session_id ?? ""));
     }
   }
   return out;
@@ -169,7 +172,9 @@ async function opencode(base) {
         if (d.role !== "user" || !d.id) continue;
         const text = await partsText(join(root, "part", d.id));
         if (text) {
-          out.push(prompt("opencode", (d.time?.created ?? 0) / 1000, d.path?.cwd, text));
+          // The session is the directory the message sits in.
+          const session = basename(dir);
+          out.push(prompt("opencode", (d.time?.created ?? 0) / 1000, d.path?.cwd, text, session));
         }
       } catch {
         // Skip unreadable records rather than abort the whole scan.
