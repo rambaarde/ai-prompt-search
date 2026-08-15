@@ -58,6 +58,13 @@ jobs:
           node-version: "22"
           registry-url: https://registry.npmjs.org
 
+      # Trusted Publishing needs npm >= 11.5.1 to perform the OIDC exchange at
+      # all. Node 22 bundles npm 10, which simply publishes with whatever token
+      # it can find — and with no token configured, the registry answers a 404
+      # on the PUT that reads exactly like a missing package rather than a
+      # missing credential. This line is the whole difference.
+      - run: npm install -g npm@latest
+
       # The suite is the gate. A release that ships a broken reader is worse
       # than a late one, and this package has no build step to catch it later.
       - run: npm test
@@ -67,9 +74,18 @@ jobs:
       # only belongs in the repository may be.
       - name: assert the tarball before it leaves
         run: |
+          npm pack --dry-run --json > /tmp/pack.json
           node -e '
-            const { execSync } = require("node:child_process");
-            const meta = JSON.parse(execSync("npm pack --dry-run --json").toString())[0];
+            // npm 12 changed this from an array to an object keyed by package
+            // name, and the step above now installs whatever npm is current.
+            // Accept both: the guard exists to check the bytes, not to have an
+            // opinion about the envelope npm wraps them in.
+            const raw = require("/tmp/pack.json");
+            const meta = Array.isArray(raw) ? raw[0] : Object.values(raw)[0];
+            if (!meta || !Array.isArray(meta.files)) {
+              console.error("unrecognised npm pack --json shape: " + JSON.stringify(Object.keys(raw)));
+              process.exit(1);
+            }
             const files = meta.files.map((f) => f.path);
             const fail = (m) => { console.error("REFUSING TO PUBLISH: " + m); process.exit(1); };
             if (!files.includes("bin/aps.js")) fail("bin/aps.js is not in the tarball");
