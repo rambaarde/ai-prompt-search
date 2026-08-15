@@ -50,6 +50,7 @@ const HELP = `aps — your prompts, across every AI CLI
   aps --json <words>     machine-readable, for piping
 
   aps install            alias your agents so ctrl-p just works
+  aps install <name>…    also wrap your own launcher, e.g. a shell function
   aps uninstall          take the aliases back out
   aps run <command>      run it with ctrl-p bound to the picker
   aps --pick             picker on the terminal, chosen prompt to stdout
@@ -122,9 +123,15 @@ const argv = process.argv.slice(2);
  */
 if (argv[0] === "install" || argv[0] === "uninstall") {
   const mod = await import("../src/install.js");
-  const shell = argv.includes("--shell") ? argv[argv.indexOf("--shell") + 1] : undefined;
+  const shellAt = argv.indexOf("--shell");
+  const shell = shellAt === -1 ? undefined : argv[shellAt + 1];
+  // Bare words are extra commands to wrap — someone's own launcher, which is
+  // usually a shell function and so invisible to PATH detection.
+  const extra = argv
+    .slice(1)
+    .filter((a, i) => !a.startsWith("-") && i + 1 !== shellAt);
   const fn = argv[0] === "install" ? mod.install : mod.uninstall;
-  process.exit(await fn({ shell, print: argv.includes("--print") }));
+  process.exit(await fn({ shell, extra, print: argv.includes("--print") }));
 }
 
 if (argv[0] === "--keys") {

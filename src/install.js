@@ -61,13 +61,39 @@ export async function installed(agents = AGENTS) {
   return found.filter(Boolean);
 }
 
-/** The alias block, given the agents to wrap. */
-export function block(agents) {
+/**
+ * The alias block.
+ *
+ * Two things here are not decoration.
+ *
+ * **The whole block is skipped inside a wrapped session.** Without that guard,
+ * an alias for a shell function recurses without end: the alias runs a shell,
+ * that shell sources this file, the alias is defined again, and it calls
+ * itself. Skipping when APS_WRAPPED is set also means anything an agent
+ * shells out to gets the real command, not another interceptor.
+ *
+ * **A shell function cannot be spawned.** `aps run` starts the command through
+ * the PATH, and a function defined in your rc is not on the PATH — so a custom
+ * launcher like `claude-start`, which is exactly the kind of thing people wrap
+ * their agent in, has to be run by a shell that has read that rc. Hence the
+ * `-ic` form for names that are not binaries.
+ */
+export function block(entries, shell = "zsh") {
+  const line = ({ name, kind }) =>
+    kind === "function"
+      ? `  alias ${name}='aps run ${shell} -ic ${name}'`
+      : `  alias ${name}='aps run ${name}'`;
+
   return [
     START,
-    "# ctrl-p opens your prompt history inside these agents.",
+    "# ctrl-p opens your prompt history inside these commands.",
     "# Remove with `aps uninstall`, or delete this block.",
-    ...agents.map((a) => `alias ${a}='aps run ${a}'`),
+    "#",
+    "# Skipped inside a session aps already wraps, so nothing wraps twice and a",
+    "# shell-function alias cannot call itself.",
+    'if [ -z "$APS_WRAPPED" ]; then',
+    ...entries.map(line),
+    "fi",
     END,
   ].join("\n");
 }
@@ -106,22 +132,36 @@ const read = (p) => readFile(p, "utf8").catch(() => "");
  * somebody's shell configuration is the kind of thing that should always be one
  * command away from undone.
  */
-export async function install({ shell, print = false } = {}) {
-  const agents = await installed();
-  if (agents.length === 0) {
+export async function install({ shell, print = false, extra = [] } = {}) {
+  const { name: shellName, path } = rcPath(shell);
+  const found = await installed();
+
+  // Anything named explicitly is included even when it is not on the PATH,
+  // because that is the signature of a shell function — someone's own launcher
+  // that sets up their context before starting the agent. Those are precisely
+  // the commands worth wrapping, and precisely the ones detection cannot see.
+  const onPath = new Set(found);
+  const entries = [
+    ...found.map((name) => ({ name, kind: "binary" })),
+    ...extra
+      .filter((name) => !onPath.has(name))
+      .map((name) => ({ name, kind: "function" })),
+  ];
+
+  if (entries.length === 0) {
     console.error("no agents found to wrap — `aps --agents` shows what was detected");
+    console.error("if you start yours with a shell function, name it: aps install my-launcher");
     return 1;
   }
 
-  const text = block(agents);
+  const text = block(entries, shellName || "zsh");
   if (print) {
     console.log(text);
     return 0;
   }
 
-  const { name, path } = rcPath(shell);
   if (!path) {
-    console.error(`aps: no rc file known for ${name || "this shell"} — add these lines yourself:\n`);
+    console.error(`aps: no rc file known for ${shellName || "this shell"} — add these lines yourself:\n`);
     console.log(text);
     return 1;
   }
@@ -132,8 +172,11 @@ export async function install({ shell, print = false } = {}) {
 
   const verb = before.includes(START) ? "updated" : "added";
   console.log(`${verb} in ${path}:`);
-  for (const a of agents) console.log(`  ${a} → aps run ${a}`);
-  console.log(`\nrun \`exec ${name}\` to pick it up, then press ctrl-p inside ${agents[0]}`);
+  for (const e of entries) {
+    const how = e.kind === "function" ? `aps run ${shellName} -ic ${e.name}` : `aps run ${e.name}`;
+    console.log(`  ${e.name} → ${how}`);
+  }
+  console.log(`\nrun \`exec ${shellName}\` to pick it up, then press ctrl-p inside ${entries[0].name}`);
   if (before) console.log(`the previous file is at ${path}.aps-backup`);
   return 0;
 }
