@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/rambaarde/ai-prompt-search/compare/v0.5.0...v0.5.1) (2026-08-15)
+
+
+### Bug Fixes
+
+* **run:** show prompts typed during the session ([ac41abd](https://github.com/rambaarde/ai-prompt-search/commit/ac41abd4dd2baf9d5eb8d82ce94bba11326a14ba))
+
 ## [0.5.0](https://github.com/rambaarde/ai-prompt-search/compare/v0.4.1...v0.5.0) (2026-08-15)
 
 
