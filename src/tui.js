@@ -87,7 +87,7 @@ const when = (at) =>
  * @param {{query?: string, scope?: string|null, screen?: NodeJS.WriteStream}} opts
  * @returns {Promise<string|null>} the chosen prompt, or null if cancelled
  */
-export function pick(prompts, { query = "", scope = null, screen = process.stdout } = {}) {
+export function pick(prompts, { query = "", scope = null, screen = process.stdout, keep = false } = {}) {
   return new Promise((resolve) => {
     let q = query;
     let sel = 0;
@@ -199,23 +199,27 @@ export function pick(prompts, { query = "", scope = null, screen = process.stdou
       screen.write(`${pad}  ${bg(C.shadow)}${" ".repeat(w)}${RESET}\n`);
     };
 
+    /**
+     * Leave the terminal, and the process, as they were found.
+     *
+     * `keep` matters when the picker is opened more than once in one process —
+     * which is exactly what the wrapper does, every time you press the hotkey.
+     * Without removing this listener, the second run would have two, the third
+     * three, and every keystroke would be handled once per past invocation. It
+     * also leaves stdin alive for the caller, who still needs the keyboard.
+     */
     const finish = (value) => {
-      process.stdin.setRawMode?.(false);
-      process.stdin.pause();
+      process.stdin.off("keypress", onKeypress);
+      if (!keep) {
+        process.stdin.setRawMode?.(false);
+        process.stdin.pause();
+      }
       cursor(screen, true);
       alt(screen, false);
       resolve(value);
     };
 
-    emitKeypressEvents(process.stdin);
-    process.stdin.setRawMode?.(true);
-    process.stdin.resume();
-    alt(screen, true);
-    cursor(screen, false);
-    refilter();
-    render();
-
-    process.stdin.on("keypress", (ch, key) => {
+    const onKeypress = (ch, key) => {
       if (!key) return;
       if (key.name === "escape" || (key.ctrl && (key.name === "c" || key.name === "d"))) {
         return finish(null);
@@ -231,6 +235,15 @@ export function pick(prompts, { query = "", scope = null, screen = process.stdou
       else if (ch && !key.ctrl && !key.meta && ch >= " ") { q += ch; sel = 0; refilter(); }
       else return;
       render();
-    });
+    };
+
+    emitKeypressEvents(process.stdin);
+    process.stdin.setRawMode?.(true);
+    process.stdin.resume();
+    alt(screen, true);
+    cursor(screen, false);
+    refilter();
+    render();
+    process.stdin.on("keypress", onKeypress);
   });
 }

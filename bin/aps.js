@@ -49,6 +49,7 @@ const HELP = `aps — your prompts, across every AI CLI
   aps --agents           which agents were found on this machine
   aps --json <words>     machine-readable, for piping
 
+  aps run <command>      run it with ctrl-p bound to the picker
   aps --pick             picker on the terminal, chosen prompt to stdout
   aps --hotkey           print the tmux and shell bindings to install
 
@@ -102,6 +103,29 @@ bind -x '"\\ep": "READLINE_LINE=$(aps --pick </dev/tty); READLINE_POINT=\${#READ
 };
 
 const argv = process.argv.slice(2);
+
+/**
+ * `aps run <command…>` — run something with the picker on a hotkey.
+ *
+ * Handled before flag parsing, and everything after `run` is the command's,
+ * not ours. Otherwise `aps run claude --resume` would have to decide whether
+ * `--resume` belongs to aps or to claude, and it belongs to claude.
+ */
+if (argv[0] === "run") {
+  const command = argv.slice(1);
+  if (command.length === 0) {
+    console.error("aps run needs something to run, e.g. `aps run claude`");
+    process.exit(2);
+  }
+  const { wrap } = await import("../src/wrap.js");
+  const all = await collect();
+  if (all.length === 0) {
+    console.error("no prompt history found — run `aps --agents` to see what was detected");
+    process.exit(1);
+  }
+  process.exit(await wrap(command, all, { scope: projectRoot() }));
+}
+
 const opts = { copy: false, limit: 40, agent: null, json: false, print: false, all: false, pick: false };
 const terms = [];
 
