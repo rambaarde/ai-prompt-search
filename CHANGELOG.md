@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/rambaarde/ai-prompt-search/compare/v0.2.0...v0.2.1) (2026-08-15)
+
+
+### Bug Fixes
+
+* **ci:** install the npm that can actually do the OIDC exchange ([bcd0edc](https://github.com/rambaarde/ai-prompt-search/commit/bcd0edc06ba225e8bc90d483bee0be665ab72d03))
+
 ## [0.2.0](https://github.com/rambaarde/ai-prompt-search/compare/v0.1.0...v0.2.0) (2026-08-15)
 
 
