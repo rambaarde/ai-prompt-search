@@ -11,7 +11,6 @@
 
 * scope prompts to the current project by default ([d9a6c8d](https://github.com/rambaarde/ai-prompt-search/commit/d9a6c8de0cc937fd82a1b986134c2224c140a4d9))
 * search and reuse your prompts across every AI CLI ([4395fc9](https://github.com/rambaarde/ai-prompt-search/commit/4395fc90a8f484dba2a1bb2f27568d2ac7466804))
-* **tui:** a smaller centred panel, like a browser omnibox ([4737e3e](https://github.com/rambaarde/ai-prompt-search/commit/4737e3e0bb7246fc0b799434acd4e8887daa7a3f))
 * **tui:** a smaller centred panel, like a browser omnibox ([bfd618c](https://github.com/rambaarde/ai-prompt-search/commit/bfd618c361fc5039229f12ccc2ad2a637733f0cd))
 
 
