@@ -16,7 +16,7 @@
  */
 import { readFile, readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 /**
  * The home directory to read from.
@@ -174,8 +174,13 @@ async function partsText(dir) {
   return chunks.join("\n").trim();
 }
 
-/** Last path segment: `/Users/x/code/atlas-web` -> `atlas-web`. */
-const lastSegment = (p) => (typeof p === "string" ? p.split("/").filter(Boolean).pop() ?? "" : "");
+/**
+ * Last path segment: `/Users/x/code/atlas-web` -> `atlas-web`.
+ *
+ * `basename` rather than splitting on "/", which on Windows left the project
+ * column showing the entire path because nothing in `C:\code\atlas` is a "/".
+ */
+const lastSegment = (p) => (typeof p === "string" && p ? basename(p) : "");
 
 /** Every source, with the directory that proves the agent is installed. */
 export const SOURCES = [

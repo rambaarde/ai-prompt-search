@@ -8,7 +8,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { search, keep, flatten } from "../src/search.js";
+import { join, sep } from "node:path";
+
+import { search, keep, flatten, inScope } from "../src/search.js";
 
 const p = (agent, at, text, project = "") => ({ agent, at, project, text });
 
@@ -72,4 +74,45 @@ test("limit caps the rows but never the reported total", () => {
 test("an empty search returns everything, newest first", () => {
   const { rows } = search([p("claude", 1, "alpha prompt"), p("codex", 2, "beta prompt")]);
   assert.deepEqual(rows.map((r) => r.text), ["beta prompt", "alpha prompt"]);
+});
+
+// Scoping had no unit tests at all — only one end-to-end CLI case — and the
+// consequence was a separator bug that reached CI: on Windows a prompt typed in
+// a subdirectory never matched its own project, because the check appended "/"
+// to a path built from "\". These build their paths with `join`, so they speak
+// whatever separator the machine running them uses.
+test("a subdirectory belongs to the project above it", () => {
+  const root = join("code", "atlas");
+  assert.equal(inScope(root, root), true, "the root is in its own scope");
+  assert.equal(inScope(join(root, "src"), root), true);
+  assert.equal(inScope(join(root, "src", "deep", "nested"), root), true);
+});
+
+test("a sibling that merely starts the same is a different project", () => {
+  // The case a plain prefix match gets wrong: "atlas" must not claim
+  // "atlas-backup", which shares every character of the shorter name.
+  assert.equal(inScope(join("code", "atlas-backup"), join("code", "atlas")), false);
+  assert.equal(inScope(join("code", "atlas"), join("code", "atlas-backup")), false);
+});
+
+test("no scope means everything, and no cwd means nothing", () => {
+  // A prompt with no recorded directory cannot be shown to belong here, and
+  // assuming it does is what puts another client's work on the screen.
+  assert.equal(inScope(join("code", "atlas"), null), true);
+  assert.equal(inScope("", join("code", "atlas")), false);
+});
+
+test("scope filters the search, not merely the paths", () => {
+  const here = join("code", "atlas");
+  const rows = [
+    { ...p("claude", 3, "prompt from atlas"), cwd: here },
+    { ...p("claude", 2, "prompt from a subfolder"), cwd: join(here, "src") },
+    { ...p("codex", 1, "prompt from another client"), cwd: join("code", "secret") },
+  ];
+  assert.deepEqual(
+    search(rows, { scope: here }).rows.map((r) => r.text),
+    ["prompt from atlas", "prompt from a subfolder"],
+    `a subfolder must survive scoping (the separator here is "${sep}")`,
+  );
+  assert.equal(search(rows, {}).matched, 3, "without a scope nothing is hidden");
 });

@@ -24,6 +24,7 @@
  * even twice.
  */
 import { emitKeypressEvents } from "node:readline";
+import { basename } from "node:path";
 import { search } from "./search.js";
 
 const ESC = "\x1b";
@@ -68,7 +69,7 @@ const HUE = { claude: 175, codex: 110, opencode: 179 };
  */
 const visible = (s) => s.replace(/\x1b\[[0-9;]*m/g, "").length;
 
-const lastSegment = (p) => (p || "").split("/").filter(Boolean).pop() ?? "";
+const lastSegment = (p) => (p ? basename(p) : "");
 
 const when = (at) =>
   at ? new Date(at * 1000).toISOString().slice(5, 16).replace("T", " ") : "  --   ";
