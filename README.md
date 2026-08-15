@@ -140,12 +140,11 @@ pseudo-terminal it owns and keeps only the keyboard. Everything that is not the
 hotkey is forwarded byte-for-byte, and the agent keeps its own output, colour
 and resizing.
 
-**It takes your colours, not its own.** The panel asks the terminal for its
-actual background and foreground (`OSC 11` / `OSC 10`) and derives every layer
-from them, so it adapts to whatever scheme you run — light, dark, Solarized,
-anything. The agent dots use your palette's own magenta, cyan and yellow. A
-terminal that will not answer gets a dark default, after a 120 ms wait that
-cannot block startup.
+**It has no colours of its own.** The panel is transparent — a border, your
+terminal's own palette, and whatever is already on screen behind it. Nothing is
+painted, so nothing can clash with your theme, on any scheme anyone runs. The
+selected row reverses your foreground and background, which is readable by
+definition; the agent dots use your palette's magenta, cyan and yellow.
 
 That needs a pty, which Node cannot allocate on its own, so `node-pty` is an
 **optional** dependency: `npm i -g ai-prompt-search` still installs nothing

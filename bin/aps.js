@@ -54,7 +54,6 @@ const HELP = `aps — your prompts, across every AI CLI
   aps run <command>      run it with ctrl-p bound to the picker
   aps --pick             picker on the terminal, chosen prompt to stdout
   aps --hotkey           print the tmux and shell bindings to install
-  aps --theme            what your terminal reports, and the panel built from it
   aps --keys             what your terminal sends for a keypress
 
 In the picker: ↑↓ move · ⏎ copy and quit · esc quit · ctrl-u clear · ctrl-a scope
@@ -126,37 +125,6 @@ if (argv[0] === "install" || argv[0] === "uninstall") {
   const shell = argv.includes("--shell") ? argv[argv.indexOf("--shell") + 1] : undefined;
   const fn = argv[0] === "install" ? mod.install : mod.uninstall;
   process.exit(await fn({ shell, print: argv.includes("--print") }));
-}
-
-/**
- * `aps --theme` — show what the terminal said, and what was made of it.
- *
- * The same reasoning as `--keys`. Whether a terminal answers OSC 11 is not
- * something that can be established from another machine, and "it does not
- * match my theme" has at least three causes — no reply, a reply in a shape the
- * parser missed, or colours derived badly from a good reply. This tells them
- * apart in one command instead of by correspondence.
- */
-if (argv[0] === "--theme") {
-  const { probe, FALLBACK } = await import("../src/theme.js");
-  const p = await probe(process.stdout, process.stdin, 400);
-  const swatch = (c) => `\x1b[48;2;${c[0]};${c[1]};${c[2]}m      \x1b[0m`;
-
-  if (!p.derived) {
-    console.log("your terminal did not answer OSC 11 / OSC 10 within 400ms.");
-    console.log("the panel is using the built-in dark palette:\n");
-  } else {
-    console.log("your terminal answered, and the panel is built from its colours:\n");
-  }
-  for (const [name, value] of Object.entries(p)) {
-    if (name === "derived") continue;
-    console.log(`  ${name.padEnd(9)} ${swatch(value)}  rgb(${value.join(", ")})`);
-  }
-  if (!p.derived) {
-    console.log("\nif your terminal does support it, this is a bug — please report the output of:");
-    console.log("  printf '\\033]11;?\\007' ; sleep 1");
-  }
-  process.exit(0);
 }
 
 if (argv[0] === "--keys") {
@@ -305,13 +273,10 @@ if (opts.pick) {
     console.error("--pick needs a keyboard: run it from a binding, not a pipe");
     process.exit(2);
   }
-  const screen = screenForPicker();
-  const { probe } = await import("../src/theme.js");
   const chosen = await pick(prompts, {
     query: terms.join(" "),
     scope: opts.all ? null : projectRoot(),
-    screen,
-    palette: await probe(screen),
+    screen: screenForPicker(),
   });
   // Nothing chosen exits non-zero so a binding can tell "escaped" from "picked
   // an empty line" and leave the command line untouched.
@@ -321,11 +286,9 @@ if (opts.pick) {
 }
 
 if (interactive) {
-  const { probe } = await import("../src/theme.js");
   const chosen = await pick(prompts, {
     query: terms.join(" "),
     scope: opts.all ? null : projectRoot(),
-    palette: await probe(process.stdout),
   });
   if (!chosen) process.exit(0);
   toClipboard(chosen, () => {

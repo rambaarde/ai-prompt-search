@@ -26,7 +26,6 @@
 import { emitKeypressEvents } from "node:readline";
 import { basename } from "node:path";
 import { search } from "./search.js";
-import { FALLBACK } from "./theme.js";
 
 const ESC = "\x1b";
 const RESET = `${ESC}[0m`;
@@ -34,17 +33,24 @@ const alt = (out, on) => out.write(`${ESC}[?1049${on ? "h" : "l"}`);
 const cursor = (out, on) => out.write(`${ESC}[?25${on ? "h" : "l"}`);
 const clear = (out) => out.write(`${ESC}[2J${ESC}[H`);
 
-const bg = ([r, g, b]) => `${ESC}[48;2;${r};${g};${b}m`;
-const fg = ([r, g, b]) => `${ESC}[38;2;${r};${g};${b}m`;
-
 /**
- * Each agent gets a hue, carried by the dot at the head of its rows.
+ * Colour, entirely from the terminal's own palette.
  *
- * These are the terminal's own palette entries rather than fixed colours,
- * written as plain SGR codes: whatever magenta, cyan and yellow mean in your
- * scheme is what the dots are. A theme that has been chosen for legibility
- * against its own background stays legible on a surface derived from it.
+ * The panel used to paint a filled surface, and then had to work out what
+ * colour that surface should be — which meant asking the terminal for its
+ * background and deriving a scheme from it. All of that machinery existed to
+ * solve a problem the design created.
+ *
+ * A transparent panel with a border does not have the problem. The interior is
+ * whatever is behind it, the border and text are the terminal's own colours,
+ * and there is nothing left that can clash with a theme. It is also how every
+ * picker in a terminal already looks — Telescope, fzf, lazygit — so it reads as
+ * native rather than as something pasted on top.
  */
+const DIM = `${ESC}[2m`;
+const ACCENT = `${ESC}[34m`;
+
+/** Each agent gets a hue, taken from the palette your scheme already defines. */
 const HUE = { claude: `${ESC}[35m`, codex: `${ESC}[36m`, opencode: `${ESC}[33m` };
 
 /**
@@ -76,14 +82,9 @@ const when = (at) =>
  * @returns {Promise<string|null>} the chosen prompt, or null if cancelled
  */
 export function pick(prompts, {
-  query = "", scope = null, screen = process.stdout, keep = false, palette = FALLBACK,
+  query = "", scope = null, screen = process.stdout, keep = false,
 } = {}) {
   return new Promise((resolve) => {
-    // Named steps, so the render below reads as intent rather than as numbers.
-    // Derived from the terminal's own background and foreground when it will
-    // say what they are — see theme.js — and the old fixed dark palette when
-    // it will not.
-    const C = palette;
     let q = query;
     let sel = 0;
     let rows = [];
@@ -109,9 +110,16 @@ export function pick(prompts, {
       return { cols, lines, w, listMax, left: Math.max(0, Math.floor((cols - w) / 2)) };
     };
 
+    // How many matched, as opposed to how many fit on screen. The panel shows
+    // eight rows; saying "8" while a search narrowed twenty thousand prompts to
+    // forty tells you nothing about whether the search is working.
+    let matched = 0;
+
     const refilter = () => {
       const terms = q.split(/\s+/).filter(Boolean);
-      rows = search(prompts, { terms, limit: box().listMax, scope: here }).rows;
+      const found = search(prompts, { terms, limit: box().listMax, scope: here });
+      rows = found.rows;
+      matched = found.matched;
       if (sel > rows.length - 1) sel = Math.max(0, rows.length - 1);
     };
 
@@ -122,76 +130,74 @@ export function pick(prompts, {
       clear(screen);
       const { lines, w, left } = box();
       const pad = " ".repeat(left);
-      const body = w - 4; // two columns of breathing room on each side
-
-      // The shadow is offset down and right, as a real one is. It is what makes
-      // the panel read as lying over the session rather than cut into it.
-      const shade = `${bg(C.shadow)}  ${RESET}`;
-      let first = true;
-      const out = (content, surface = C.surface) => {
-        const fill = " ".repeat(Math.max(0, w - visible(content)));
-        screen.write(`${pad}${bg(surface)}${fg(C.text)}${content}${fill}${RESET}`);
-        screen.write(first ? "\n" : `${shade}\n`);
-        first = false;
-      };
+      const inner = w - 2;
+      const body = inner - 2; // one column of breathing room inside each edge
+      const out = (s) => screen.write(`${pad}${s}\n`);
 
       // Biased a little above centre: a panel sitting dead-centre reads as low.
-      const height = (rows.length || 1) + 6;
+      const height = (rows.length || 1) + 4;
       const top = Math.max(0, Math.floor((lines - height) / 2) - 1);
       for (let i = 0; i < top; i++) screen.write("\n");
 
-      out("");
+      // A title set into the top edge, the way every picker in a terminal does
+      // it. It also removes the need for a placeholder to explain the field.
+      const title = ` prompts `;
+      const before = Math.max(1, Math.floor((inner - title.length) / 2));
+      const after = Math.max(1, inner - title.length - before);
+      out(`${DIM}╭${"─".repeat(before)}${RESET}${ACCENT}${title}${RESET}${DIM}${"─".repeat(after)}╮${RESET}`);
 
-      // The field. A placeholder rather than an empty line, because an empty
-      // field with a caret in it does not say what it searches.
-      const caret = `${bg(C.caret)} ${bg(C.surface)}`;
-      const typed = q
-        ? `${fg(C.bright)}${fit(q, body - 4)}`
-        : `${fg(C.faint)}Search my prompts…`;
-      out(`  ${fg(C.muted)}⌕ ${typed}${q ? caret : ""}`);
-
-      // A rule instead of a border: it separates what you type from what you
-      // get, which is the only division in here that carries meaning.
-      out(`  ${fg(C.rule)}${"─".repeat(body)}`);
+      // The field. `❯` rather than a magnifying glass: it is a prompt, and the
+      // count belongs on this line because it answers "is my search working".
+      const shown = `${matched}/${total()}`;
+      const typed = q || "";
+      const room = body - 2 - shown.length - 2;
+      const caret = `${ESC}[7m ${RESET}`;
+      const field = ` ${ACCENT}❯${RESET} ${fit(typed, Math.max(8, room))}${caret}`;
+      out(`${DIM}│${RESET}${field}${" ".repeat(Math.max(1, inner - visible(field) - shown.length - 1))}${DIM}${shown} │${RESET}`);
+      out(`${DIM}├${"─".repeat(inner)}┤${RESET}`);
 
       if (rows.length === 0) {
         const msg = q
           ? here
-            ? "nothing in this project — ^a searches every project"
+            ? "nothing here — ^a searches every project"
             : "no prompt matches"
           : "type to search";
-        out(`  ${fg(C.faint)}${fit(msg, body)}`);
+        out(`${DIM}│${RESET} ${DIM}${fit(msg, body).padEnd(body)}${RESET} ${DIM}│${RESET}`);
       }
 
       rows.forEach((r, i) => {
         const chosen = i === sel;
-        const surface = chosen ? C.selected : C.surface;
-        const dot = `${HUE[r.agent] ?? fg(C.muted)}●`;
-
-        // The right-hand label mirrors a browser suggestion: metadata normally,
-        // and on the row you have landed on, the action Enter will take.
-        const tail = chosen ? "⏎ copy" : `${r.agent} · ${when(r.at)}`;
+        const dot = `${HUE[r.agent] ?? DIM}●${RESET}`;
+        const meta = `${r.agent} · ${when(r.at)}`;
         const times = r.count > 1 ? ` ×${r.count}` : "";
-        const room = body - 2 - tail.length - times.length - 2;
+        const room = body - 3 - meta.length - times.length - 2;
         const text = fit(r.text.replace(/\n/g, " ⏎ "), Math.max(12, room));
 
-        const head = `  ${dot} ${fg(chosen ? C.bright : C.text)}${text}${fg(C.faint)}${times}`;
-        const gap = " ".repeat(Math.max(1, w - 2 - visible(head) - tail.length));
-        out(`${head}${gap}${fg(chosen ? C.muted : C.faint)}${tail}`, surface);
+        if (chosen) {
+          // The selected row reverses the terminal's own colours rather than
+          // painting one. Whatever your scheme is, its foreground on its
+          // background is by definition readable — no palette to get wrong,
+          // on any theme, including ones nobody here has seen.
+          //
+          // The dot is kept, uncoloured. Dropping it shifted the text two
+          // columns left, so the row you were on was the one that did not line
+          // up with the rest — the opposite of what a selection should do.
+          const line = ` ● ${text}${times}`;
+          const gap = " ".repeat(Math.max(1, inner - line.length - meta.length - 1));
+          out(`${DIM}│${RESET}${ESC}[7m${line}${gap}${meta} ${RESET}${DIM}│${RESET}`);
+        } else {
+          const line = ` ${dot} ${text}${DIM}${times}${RESET}`;
+          const gap = " ".repeat(Math.max(1, inner - visible(line) - meta.length - 1));
+          out(`${DIM}│${RESET}${line}${gap}${DIM}${meta} │${RESET}`);
+        }
       });
 
-      out("");
-
-      // The footer earns its line by answering the two questions the panel
-      // cannot: how much you are not seeing, and which project you are inside.
+      // The state that does not fit anywhere else goes into the bottom edge,
+      // which costs no row of its own: which project, and the way out of it.
       const where = here ? `${lastSegment(here)} only` : "all projects";
-      const shown = rows.length ? `${rows.length} of ${total()}` : `${total()} prompts`;
-      const keys = here ? "^a all projects" : "^a this project";
-      out(`  ${fg(C.faint)}${fit(`${shown} · ${where} · ↑↓ · ${keys} · esc`, body)}`);
-      out("");
-      // Close the shadow off under the panel, indented so it starts where the
-      // offset does.
-      screen.write(`${pad}  ${bg(C.shadow)}${" ".repeat(w)}${RESET}\n`);
+      const label = ` ${where} · ^a · esc `;
+      const lead = Math.max(1, inner - label.length - 2);
+      out(`${DIM}╰${"─".repeat(2)}${label}${"─".repeat(lead)}╯${RESET}`);
     };
 
     /**

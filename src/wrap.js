@@ -129,11 +129,6 @@ export async function wrap(command, load, { scope = null } = {}) {
     return 2;
   }
 
-  // Asked once, before the agent exists. Probing later would mean writing an
-  // escape sequence into a live session and racing the agent for the reply.
-  const { probe } = await import("./theme.js");
-  const palette = await probe(process.stdout);
-
   let pty;
   try {
     pty = await import("node-pty");
@@ -197,7 +192,7 @@ export async function wrap(command, load, { scope = null } = {}) {
       const prompts = await load().catch(() => []);
       // The picker uses the alternate screen buffer, so leaving it restores
       // whatever the agent had drawn — no repainting on our part.
-      const chosen = await pick(prompts, { scope, keep: true, palette }).catch(() => null);
+      const chosen = await pick(prompts, { scope, keep: true }).catch(() => null);
       picking = false;
       process.stdout.write(held.join(""));
       held.length = 0;
