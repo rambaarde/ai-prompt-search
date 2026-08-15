@@ -125,19 +125,18 @@ a pipe is a tool you cannot compose with anything.
 aps install             # then just keep typing `claude`, `codex`, `opencode`
 ```
 
-**Start your agent with your own launcher?** Name it, and it gets wrapped too:
+That writes one alias per command, into your shell's rc file, inside a fenced
+block it can rewrite or remove.
+
+**Your own launcher is found too.** Plenty of people start their agent through a
+shell function that sets something up first. Those are not binaries on your
+`PATH`, so they cannot be detected there and cannot be spawned by name — `aps`
+reads your rc file for them and runs them through your shell instead. Anything
+you name yourself works the same way:
 
 ```sh
-aps install claude-start        # a shell function, an alias, any name you use
-```
-
-Detection can only see binaries on your `PATH`, and a launcher that injects your
-context or plugins is usually a shell function — invisible to it, and impossible
-for `aps run` to spawn by name. Named explicitly, it is run through your shell
-instead, which is the only thing that knows the function exists.
-
-That writes one alias per command, into your shell's rc file, inside a fenced
-block it can rewrite or remove. Nobody is going to retype their
+aps install my-launcher
+``` Nobody is going to retype their
 muscle memory as `aps run claude` — so it aliases the names you already use, and
 `aps uninstall` puts the file back. `aps install --print` shows the block without
 touching anything.
