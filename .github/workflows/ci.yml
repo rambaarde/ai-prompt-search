@@ -33,17 +33,29 @@ jobs:
 
   no-dependencies:
     # The install story defended mechanically rather than by intention. A single
-    # runtime dependency is the difference between `npx` and a dependency tree.
+    # required dependency is the difference between `npx` and a dependency tree.
+    #
+    # node-pty is allowed, and only as an optional: it exists solely for the
+    # `aps run` hotkey wrapper, which needs a pty that Node cannot allocate
+    # itself. Optional means a failed install is not a failed install of aps —
+    # everything else keeps working without it. Anything else appearing in
+    # either field is a change worth arguing about, so it fails here.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: |
           node -e '
             const pkg = require("./package.json");
-            const deps = Object.keys(pkg.dependencies ?? {});
-            if (deps.length) {
-              console.error("runtime dependencies appeared: " + deps.join(", "));
+            const required = Object.keys(pkg.dependencies ?? {});
+            if (required.length) {
+              console.error("required dependencies appeared: " + required.join(", "));
               process.exit(1);
             }
-            console.log("ok: zero runtime dependencies");
+            const optional = Object.keys(pkg.optionalDependencies ?? {});
+            const unexpected = optional.filter((d) => d !== "node-pty");
+            if (unexpected.length) {
+              console.error("unexpected optional dependencies: " + unexpected.join(", "));
+              process.exit(1);
+            }
+            console.log(`ok: 0 required, ${optional.length} optional (${optional.join(", ") || "none"})`);
           '

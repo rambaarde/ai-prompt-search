@@ -179,6 +179,26 @@ test("prompts are scoped to the project you are standing in", async () => {
 // The hotkey surface. The picker half of --pick needs a real terminal and was
 // exercised by hand inside tmux; what is testable here is that it refuses
 // clearly when there is no keyboard, rather than hanging on a pipe forever.
+// The wrapper's real behaviour needs a pty and was driven by hand inside tmux:
+// passthrough, ctrl-p, filtering, injection, cancel, and repeated opens. What
+// belongs here is the refusals — the paths that must not hang or crash.
+test("aps run needs something to run", async () => {
+  const home = await fixture();
+  const { code, stderr } = await aps(["run"], home);
+  assert.equal(code, 2);
+  assert.match(stderr, /needs something to run/);
+  await drop(home);
+});
+
+test("aps run without a terminal refuses rather than spawning blind", async () => {
+  // Wrapping only means anything when there is a keyboard to intercept.
+  const home = await fixture();
+  const { code, stderr } = await aps(["run", "cat"], home);
+  assert.equal(code, 2);
+  assert.match(stderr, /needs a terminal/);
+  await drop(home);
+});
+
 test("--pick without a keyboard refuses instead of hanging", async () => {
   const home = await fixture();
   const { code, stderr } = await aps(["--pick"], home);

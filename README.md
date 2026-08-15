@@ -92,6 +92,7 @@ aps -a codex            # one agent only
 aps --agents            # what was found on this machine
 aps --json rollback     # machine-readable, for piping
 
+aps run claude          # run it with ctrl-p bound to the picker
 aps --pick              # picker on the terminal, chosen prompt to stdout
 aps --hotkey            # the tmux and shell bindings to install
 ```
@@ -114,17 +115,39 @@ reachable with `-A`.
 Piped or redirected, `aps` prints instead of drawing — a TUI that renders escape codes into
 a pipe is a tool you cannot compose with anything.
 
-### A hotkey, and the honest limit on one
+### A hotkey, inside the agent
+
+```sh
+aps run claude          # ctrl-p opens the picker over the live session
+alias claude='aps run claude'
+```
+
+Press **ctrl-p** mid-conversation: the panel takes over the screen, you type a
+few words, and the prompt you pick is typed into the agent as if you had typed
+it yourself. No multiplexer, no terminal-specific config.
+
+It works by being the thing in the middle. A running agent holds the keyboard in
+raw mode, so nothing outside it can see a keypress — `aps run` gives the agent a
+pseudo-terminal it owns and keeps only the keyboard. Everything that is not the
+hotkey is forwarded byte-for-byte, and the agent keeps its own output, colour
+and resizing.
+
+That needs a pty, which Node cannot allocate on its own, so `node-pty` is an
+**optional** dependency: `npm i -g ai-prompt-search` still installs nothing
+required, plain `aps` never loads it, and if the prebuilt binary is unavailable
+for your platform `aps run` says so and points at the tmux binding instead.
+
+<sub>The zero-dependency route was tried first. The `script` utility can allocate a pty, but on
+macOS it requires its own stdin to be a terminal — `tcgetattr/ioctl: Operation not supported on
+socket` — and being in the middle means handing it a pipe.</sub>
+
+### Or a binding, if you prefer no wrapper
 
 ```sh
 aps --hotkey            # print the bindings; --hotkey tmux|zsh|bash for one
 ```
 
-**Inside a running agent, only tmux can do this.** While Claude Code or Codex is
-running it holds the keyboard in raw mode, and nothing outside it can inject a
-keystroke — not a shell binding, not a background daemon. A hotkey that works
-*while you are talking to an agent* has to come from the layer above it. That
-layer is your multiplexer:
+If you already live in tmux, a popup costs nothing extra:
 
 ```tmux
 bind -n M-p display-popup -E -w 76 -h 16 'p=$(aps --pick) && tmux send-keys -l -- "$p"'
