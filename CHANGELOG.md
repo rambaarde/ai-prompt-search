@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/rambaarde/ai-prompt-search/compare/v0.3.0...v0.3.1) (2026-08-15)
+
+
+### Bug Fixes
+
+* **cli:** say why a list appeared instead of the picker ([0952342](https://github.com/rambaarde/ai-prompt-search/commit/0952342a3733474c0171d430053391a86acd85e0))
+
 ## [0.3.0](https://github.com/rambaarde/ai-prompt-search/compare/v0.2.2...v0.3.0) (2026-08-15)
 
 
