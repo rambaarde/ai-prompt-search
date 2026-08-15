@@ -10,7 +10,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { block, apply, strip } from "../src/install.js";
+import { block, apply, strip, launchers } from "../src/install.js";
 
 const RC = `export PATH="$HOME/bin:$PATH"
 alias gs='git status'
@@ -39,6 +39,34 @@ test("the block disables itself inside a session aps already wraps", () => {
   const text = block([{ name: "claude-start", kind: "function" }]);
   assert.match(text, /if \[ -z "\$APS_WRAPPED" \]; then/);
   assert.match(text, /\nfi\n/, "and closes the guard it opened");
+});
+
+test("a launcher defined in the shell is found, and a one-shot helper is not", () => {
+  // People start their agent through their own function more often than not,
+  // and those are invisible to PATH detection. But matching any function with
+  // an agent's name in it also catches one-shot helpers, and wrapping one puts
+  // a pty and a keyboard interceptor around a command that is over in a second.
+  const rc = [
+    'claude-start() { _session claude "$@"; }',
+    "function codex-run() { codex --profile work; }",
+    "alias start-claude='claude --resume'",
+    'codex-note() { ai-note "$@"; }',
+    "deploy() { ./deploy.sh; }",
+    "claude() { echo shadowed; }",
+  ].join("\n");
+
+  const found = launchers(rc).sort();
+  assert.deepEqual(found, ["claude-start", "codex-run", "start-claude"]);
+  assert.ok(!found.includes("codex-note"), "a one-shot helper is not a session");
+  assert.ok(!found.includes("deploy"), "an unrelated function is never a launcher");
+  assert.ok(!found.includes("claude"), "the plain agent is found on PATH, not here");
+});
+
+test("our own block is never scanned for launchers", () => {
+  // Every alias in it contains an agent's name and the word `run`. Reading it
+  // back would wrap the wrapper, and then wrap that.
+  const rc = `alias gs='git status'\n${block([{ name: "claude-start", kind: "function" }])}\n`;
+  assert.deepEqual(launchers(rc), []);
 });
 
 test("installing twice leaves one block, not two", () => {

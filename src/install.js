@@ -30,6 +30,50 @@ const END = "# <<< ai-prompt-search <<<";
 /** The agents worth wrapping: the ones with a prompt history to search. */
 const AGENTS = ["claude", "codex", "opencode"];
 
+/**
+ * Launchers defined in your shell, rather than installed on your PATH.
+ *
+ * Starting an agent through a wrapper you wrote — one that sets up context, or
+ * plugins, or a project's conventions, before handing over — is common enough
+ * that missing them makes the hotkey look broken for exactly the people who
+ * customised the most. They cannot be found by walking the PATH, because a
+ * shell function is not a file.
+ *
+ * So the rc file is read for them. A definition counts when its name pairs an
+ * agent with a word that means "begin a session" — `claude-start`,
+ * `codex-run`, `start-claude`.
+ *
+ * Requiring that second word is what keeps this honest. Matching any function
+ * with an agent's name in it also catches things like `codex-note`, a one-shot
+ * helper that is over in a second: wrapping it would put a pty and a keyboard
+ * interceptor around a command nobody will ever press a hotkey inside. Better
+ * to miss a launcher — which can still be named by hand — than to wrap a
+ * command that had no business being wrapped.
+ */
+const DEFINITION = /^\s*(?:function\s+)?([A-Za-z0-9_.-]+)\s*\(\s*\)\s*\{/gm;
+const ALIAS = /^\s*alias\s+([A-Za-z0-9_.-]+)=/gm;
+const SESSION = /(^|[-_])(start|run|session|repl|chat)([-_]|$)/i;
+
+export function launchers(rc, agents = AGENTS) {
+  // Never read our own block: those aliases all contain an agent's name, and
+  // wrapping them would wrap the wrapper.
+  const from = rc.indexOf(START);
+  const to = rc.indexOf(END);
+  const text = from !== -1 && to > from ? rc.slice(0, from) + rc.slice(to + END.length) : rc;
+
+  const names = new Set();
+  for (const re of [DEFINITION, ALIAS]) {
+    re.lastIndex = 0;
+    for (const m of text.matchAll(re)) {
+      const name = m[1];
+      const lower = name.toLowerCase();
+      if (agents.includes(lower)) continue; // a plain agent, found on PATH already
+      if (agents.some((a) => lower.includes(a)) && SESSION.test(lower)) names.add(name);
+    }
+  }
+  return [...names];
+}
+
 const RC = {
   zsh: ".zshrc",
   bash: ".bashrc",
@@ -141,11 +185,12 @@ export async function install({ shell, print = false, extra = [] } = {}) {
   // that sets up their context before starting the agent. Those are precisely
   // the commands worth wrapping, and precisely the ones detection cannot see.
   const onPath = new Set(found);
+  const fromRc = path ? launchers(await read(path)) : [];
+  const shellDefined = [...new Set([...fromRc, ...extra])].filter((n) => !onPath.has(n));
+
   const entries = [
     ...found.map((name) => ({ name, kind: "binary" })),
-    ...extra
-      .filter((name) => !onPath.has(name))
-      .map((name) => ({ name, kind: "function" })),
+    ...shellDefined.map((name) => ({ name, kind: "function" })),
   ];
 
   if (entries.length === 0) {
