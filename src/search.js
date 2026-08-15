@@ -34,17 +34,36 @@ export function keep(text) {
 export const flatten = (t) => t.replace(/\s+/g, " ").trim();
 
 /**
+ * Does this prompt belong to the directory you are standing in?
+ *
+ * A prefix match, so a prompt typed in a subdirectory of the repository still
+ * counts as the repository's. The trailing separator matters: without it,
+ * `/code/atlas` would also claim `/code/atlas-backup`.
+ */
+export function inScope(cwd, root) {
+  if (!root) return true;
+  if (!cwd) return false;
+  return cwd === root || cwd.startsWith(root.endsWith("/") ? root : `${root}/`);
+}
+
+/**
  * Search prompts.
  *
- * @param {Array<{agent:string,at:number,project:string,text:string}>} prompts
- * @param {{terms?: string[], limit?: number}} options
- * @returns {{rows: Array<{text:string,agent:string,project:string,at:number,count:number}>, matched: number}}
+ * `scope` is a directory. Passing one restricts results to prompts typed there
+ * or below — which is the difference between a personal tool and one that
+ * spills a client's project names onto the screen while you are working on
+ * something else.
+ *
+ * @param {Array<{agent:string,at:number,cwd:string,project:string,text:string}>} prompts
+ * @param {{terms?: string[], limit?: number, scope?: string|null}} options
+ * @returns {{rows: Array, matched: number}}
  */
-export function search(prompts, { terms = [], limit = 40 } = {}) {
+export function search(prompts, { terms = [], limit = 40, scope = null } = {}) {
   const needles = terms.map((t) => t.toLowerCase()).filter(Boolean);
   const byText = new Map();
 
   for (const p of prompts) {
+    if (scope && !inScope(p.cwd, scope)) continue;
     const text = flatten(String(p.text ?? ""));
     if (!keep(text)) continue;
     if (needles.length) {
@@ -59,9 +78,13 @@ export function search(prompts, { terms = [], limit = 40 } = {}) {
         found.at = p.at;
         found.agent = p.agent;
         found.project = p.project;
+        found.cwd = p.cwd;
       }
     } else {
-      byText.set(text, { text, agent: p.agent, project: p.project ?? "", at: p.at ?? 0, count: 1 });
+      byText.set(text, {
+        text, agent: p.agent, project: p.project ?? "", cwd: p.cwd ?? "",
+        at: p.at ?? 0, count: 1,
+      });
     }
   }
 

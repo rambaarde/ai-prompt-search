@@ -15,7 +15,7 @@ aps
 
 <div align="center">
 
-![tests](https://img.shields.io/badge/tests-26%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-28%20passing-brightgreen)
 ![runtime deps](https://img.shields.io/badge/runtime%20deps-0-blue)
 ![node](https://img.shields.io/badge/node-%E2%89%A520-339933)
 ![license](https://img.shields.io/badge/license-Apache--2.0-blue)
@@ -82,8 +82,9 @@ twenty thousand prompts indexed in well under a second.
 ## Usage
 
 ```sh
-aps                     # the picker
+aps                     # the picker, scoped to this project
 aps deploy staging      # the picker, with a search already typed
+aps -A                  # every project you have ever worked in
 
 aps -p migration        # print instead of picking
 aps -c migration        # copy the newest match, no UI
@@ -91,6 +92,21 @@ aps -a codex            # one agent only
 aps --agents            # what was found on this machine
 aps --json rollback     # machine-readable, for piping
 ```
+
+### Scoped to the project you are in
+
+By default you only see prompts typed in the current repository. Your other
+work — other clients, other products — stays off the screen until you ask for
+it with `-A`, or `ctrl-a` inside the picker.
+
+The scope is the **git root**, and it includes subdirectories: a prompt typed in
+`atlas/src` still belongs to `atlas`. Codex does not record a directory in its
+history file, so it is joined to the session that does — tens of files, about
+20 ms.
+
+One consequence worth knowing: prompts are filed under the path the project had
+**at the time**. Rename a directory and its old prompts stay under the old name,
+reachable with `-A`.
 
 Piped or redirected, `aps` prints instead of drawing — a TUI that renders escape codes into
 a pipe is a tool you cannot compose with anything.

@@ -27,8 +27,16 @@ import { join } from "node:path";
  */
 const home = (base) => base ?? homedir();
 
-/** A prompt, normalised across agents. */
-export const prompt = (agent, at, project, text) => ({ agent, at, project, text });
+/**
+ * A prompt, normalised across agents.
+ *
+ * `cwd` is the full working directory the prompt was typed in; `project` is
+ * just its last segment, for display. The full path is kept because scoping
+ * needs to know whether a prompt belongs to the repository you are standing in,
+ * and two unrelated checkouts can share a basename.
+ */
+export const prompt = (agent, at, cwd, text) =>
+  ({ agent, at, cwd: cwd ?? "", project: lastSegment(cwd), text });
 
 const exists = (p) => stat(p).then(() => true, () => false);
 
@@ -54,7 +62,7 @@ async function claude(base) {
   const out = [];
   for await (const d of jsonl(join(home(base), ".claude", "history.jsonl"))) {
     if (typeof d.display === "string" && d.display.trim()) {
-      out.push(prompt("claude", (d.timestamp ?? 0) / 1000, lastSegment(d.project), d.display));
+      out.push(prompt("claude", (d.timestamp ?? 0) / 1000, d.project, d.display));
     }
   }
   return out;
@@ -65,13 +73,40 @@ async function claude(base) {
  * `{ session_id, ts (seconds), text }`
  */
 async function codex(base) {
+  // history.jsonl has no cwd, so the directory comes from the session rollout
+  // that records it. Cheap: one first-line read per session, and there are tens
+  // of these, not thousands.
+  const cwdOf = await codexSessionDirs(join(home(base), ".codex", "sessions"));
   const out = [];
   for await (const d of jsonl(join(home(base), ".codex", "history.jsonl"))) {
     if (typeof d.text === "string" && d.text.trim()) {
-      out.push(prompt("codex", d.ts ?? 0, "", d.text));
+      out.push(prompt("codex", d.ts ?? 0, cwdOf.get(d.session_id), d.text));
     }
   }
   return out;
+}
+
+/** session id -> the directory that session ran in, from the rollout header. */
+async function codexSessionDirs(root) {
+  const map = new Map();
+  if (!(await exists(root))) return map;
+  const walk = async (dir) => {
+    for (const e of await readdir(dir, { withFileTypes: true })) {
+      const p = join(dir, e.name);
+      if (e.isDirectory()) { await walk(p); continue; }
+      if (!e.name.startsWith("rollout-") || !e.name.endsWith(".jsonl")) continue;
+      try {
+        const head = (await readFile(p, "utf8")).split("\n", 1)[0];
+        const d = JSON.parse(head);
+        const rec = d.payload ?? d;
+        if (rec.id && rec.cwd) map.set(rec.id, rec.cwd);
+      } catch {
+        // A session without a readable header simply has no directory.
+      }
+    }
+  };
+  await walk(root);
+  return map;
 }
 
 /**
@@ -110,7 +145,7 @@ async function opencode(base) {
         if (d.role !== "user" || !d.id) continue;
         const text = await partsText(join(root, "part", d.id));
         if (text) {
-          out.push(prompt("opencode", (d.time?.created ?? 0) / 1000, lastSegment(d.path?.cwd), text));
+          out.push(prompt("opencode", (d.time?.created ?? 0) / 1000, d.path?.cwd, text));
         }
       } catch {
         // Skip unreadable records rather than abort the whole scan.

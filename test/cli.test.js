@@ -11,7 +11,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,16 +22,21 @@ const run = promisify(execFile);
 const BIN = join(dirname(fileURLToPath(import.meta.url)), "..", "bin", "aps.js");
 
 /** Run aps with a fake HOME, capturing output instead of drawing a UI. */
-async function aps(args, home) {
+async function aps(args, home, cwd = undefined) {
   try {
     const { stdout, stderr } = await run(process.execPath, [BIN, ...args], {
       env: { ...process.env, HOME: home, USERPROFILE: home },
+      ...(cwd ? { cwd } : {}),
     });
     return { code: 0, stdout, stderr };
   } catch (err) {
     return { code: err.code ?? 1, stdout: err.stdout ?? "", stderr: err.stderr ?? "" };
   }
 }
+
+// Most cases below pass -A because they assert on prompts from fixture paths
+// that are not the directory the test runs in. Scoping is the default, so
+// without it they would correctly return nothing.
 
 async function fixture() {
   const home = await mkdtemp(join(tmpdir(), "aps-cli-"));
@@ -52,7 +57,7 @@ test("piped output prints instead of starting the picker", async () => {
   // The picker rendering escape codes into a pipe would make this tool
   // impossible to compose with anything else.
   const home = await fixture();
-  const { code, stdout } = await aps(["-n", "10"], home);
+  const { code, stdout } = await aps(["-A", "-n", "10"], home);
   assert.equal(code, 0);
   assert.match(stdout, /write the migration/);
   assert.ok(!stdout.includes("esc quit"), "no picker chrome may reach a pipe");
@@ -61,7 +66,7 @@ test("piped output prints instead of starting the picker", async () => {
 
 test("a search narrows the output and every term must match", async () => {
   const home = await fixture();
-  const { stdout } = await aps(["-p", "portal", "tests"], home);
+  const { stdout } = await aps(["-A", "-p", "portal", "tests"], home);
   assert.match(stdout, /run the portal tests/);
   assert.ok(!stdout.includes("deploy to staging"));
   await drop(home);
@@ -69,7 +74,7 @@ test("a search narrows the output and every term must match", async () => {
 
 test("no match exits 1, so a script can branch on it", async () => {
   const home = await fixture();
-  const { code, stderr } = await aps(["-p", "zzzz-no-such-prompt"], home);
+  const { code, stderr } = await aps(["-A", "-p", "zzzz-no-such-prompt"], home);
   assert.equal(code, 1);
   assert.match(stderr, /no prompt matched/);
   await drop(home);
@@ -85,7 +90,7 @@ test("an unknown flag exits 2 and shows help rather than guessing", async () => 
 
 test("--json is valid JSON and reports the total, not the page", async () => {
   const home = await fixture();
-  const { stdout } = await aps(["--json", "-n", "1"], home);
+  const { stdout } = await aps(["-A", "--json", "-n", "1"], home);
   const d = JSON.parse(stdout);
   assert.equal(d.rows.length, 1, "-n limits the rows");
   assert.equal(d.matched, 3, "matched counts everything found, not what was shown");
@@ -105,7 +110,7 @@ test("--agents reports found and absent without failing", async () => {
 
 test("-a limits to one agent", async () => {
   const home = await fixture();
-  const { stdout } = await aps(["-a", "codex", "-p"], home);
+  const { stdout } = await aps(["-A", "-a", "codex", "-p"], home);
   assert.match(stdout, /deploy to staging/);
   assert.ok(!stdout.includes("write the migration"));
   await drop(home);
@@ -126,4 +131,45 @@ test("--help exits 0 and documents the picker keys", async () => {
   assert.equal(code, 0);
   assert.match(stdout, /copy and quit/);
   await drop(home);
+});
+
+test("prompts are scoped to the project you are standing in", async () => {
+  // The reason this exists: without a scope, running aps inside one repo listed
+  // prompts from every client project on the machine — names and all — to
+  // anyone glancing at the screen.
+  // realpath matters on macOS: mkdtemp hands back /var/... while a process
+  // started there reports /private/var/..., so an unresolved fixture path would
+  // never match its own scope.
+  const home = await realpath(await mkdtemp(join(tmpdir(), "aps-scope-")));
+  const here = join(home, "work", "atlas");
+  const elsewhere = join(home, "work", "secret-client");
+  await mkdir(here, { recursive: true });
+  await mkdir(elsewhere, { recursive: true });
+  await mkdir(join(home, ".claude"), { recursive: true });
+  await writeFile(join(home, ".claude", "history.jsonl"), [
+    JSON.stringify({ display: "prompt from atlas", timestamp: 1_700_000_000_000, project: here }),
+    JSON.stringify({ display: "prompt from the other client", timestamp: 1_700_000_100_000, project: elsewhere }),
+    // A prompt from a subdirectory still belongs to the project above it.
+    JSON.stringify({ display: "prompt from a subfolder", timestamp: 1_700_000_200_000, project: join(here, "src") }),
+  ].join("\n"));
+
+  const scoped = await aps(["-p"], home, here);
+  assert.match(scoped.stdout, /prompt from atlas/);
+  assert.match(scoped.stdout, /prompt from a subfolder/, "subdirectories count as the same project");
+  assert.ok(!scoped.stdout.includes("other client"), "another project must not appear");
+
+  const all = await aps(["-A", "-p"], home, here);
+  assert.match(all.stdout, /other client/, "-A is the way to see everything");
+
+  await drop(home);
+});
+
+test("an empty scope says how to widen it rather than just failing", async () => {
+  const home = await fixture();
+  const empty = await mkdtemp(join(tmpdir(), "aps-nowhere-"));
+  const { code, stderr } = await aps(["-p", "migration"], home, empty);
+  assert.equal(code, 1);
+  assert.match(stderr, /-A/, "a dead end should name the way out");
+  await drop(home);
+  await drop(empty);
 });
