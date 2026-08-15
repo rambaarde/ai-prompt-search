@@ -15,6 +15,14 @@
   ],
   "license": "Apache-2.0",
   "author": "rambaarde",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rambaarde/ai-prompt-search.git"
+  },
+  "homepage": "https://github.com/rambaarde/ai-prompt-search#readme",
+  "bugs": {
+    "url": "https://github.com/rambaarde/ai-prompt-search/issues"
+  },
   "type": "module",
   "engines": {
     "node": ">=20"

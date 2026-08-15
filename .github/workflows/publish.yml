@@ -94,6 +94,15 @@ jobs:
             if (junk.length) fail("must not publish: " + junk.join(", "));
             const pkg = require("./package.json");
             if (Object.keys(pkg.dependencies ?? {}).length) fail("a runtime dependency appeared");
+            // Provenance is checked by the registry only AFTER the bundle is
+            // signed and uploaded, and it reports a mismatch as a 422 that
+            // reads like an auth problem. Asking here turns that into a plain
+            // sentence, before anything is signed.
+            const want = `github.com/${process.env.GITHUB_REPOSITORY}`;
+            const url = pkg.repository?.url ?? pkg.repository ?? "";
+            if (!url.includes(want)) {
+              fail(`repository.url is "${url}" — provenance needs it to name ${want}`);
+            }
             console.log(`ok: ${meta.entryCount} files, ${(meta.size / 1024).toFixed(1)}kb, 0 deps`);
           '
 
