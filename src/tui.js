@@ -26,6 +26,7 @@
 import { emitKeypressEvents } from "node:readline";
 import { basename } from "node:path";
 import { search } from "./search.js";
+import { FALLBACK } from "./theme.js";
 
 const ESC = "\x1b";
 const RESET = `${ESC}[0m`;
@@ -33,31 +34,18 @@ const alt = (out, on) => out.write(`${ESC}[?1049${on ? "h" : "l"}`);
 const cursor = (out, on) => out.write(`${ESC}[?25${on ? "h" : "l"}`);
 const clear = (out) => out.write(`${ESC}[2J${ESC}[H`);
 
-const bg = (n) => `${ESC}[48;5;${n}m`;
-const fg = (n) => `${ESC}[38;5;${n}m`;
+const bg = ([r, g, b]) => `${ESC}[48;2;${r};${g};${b}m`;
+const fg = ([r, g, b]) => `${ESC}[38;2;${r};${g};${b}m`;
 
 /**
- * The palette, as named steps rather than numbers scattered through the render.
+ * Each agent gets a hue, carried by the dot at the head of its rows.
  *
- * 256-colour rather than the 16 theme colours on purpose: the panel has to look
- * deliberately like a surface laid over the session, and a theme colour would
- * make it whatever the user's scheme decided — sometimes indistinguishable from
- * the terminal behind it, which is the one thing a floating panel must not be.
+ * These are the terminal's own palette entries rather than fixed colours,
+ * written as plain SGR codes: whatever magenta, cyan and yellow mean in your
+ * scheme is what the dots are. A theme that has been chosen for legibility
+ * against its own background stays legible on a surface derived from it.
  */
-const C = {
-  surface: 235,
-  selected: 238,
-  shadow: 233,
-  rule: 238,
-  text: 252,
-  bright: 255,
-  muted: 245,
-  faint: 240,
-  caret: 250,
-};
-
-/** Each agent gets a hue, carried by the dot at the head of its rows. */
-const HUE = { claude: 175, codex: 110, opencode: 179 };
+const HUE = { claude: `${ESC}[35m`, codex: `${ESC}[36m`, opencode: `${ESC}[33m` };
 
 /**
  * Printable width, ignoring the colour codes woven through a line.
@@ -87,8 +75,15 @@ const when = (at) =>
  * @param {{query?: string, scope?: string|null, screen?: NodeJS.WriteStream}} opts
  * @returns {Promise<string|null>} the chosen prompt, or null if cancelled
  */
-export function pick(prompts, { query = "", scope = null, screen = process.stdout, keep = false } = {}) {
+export function pick(prompts, {
+  query = "", scope = null, screen = process.stdout, keep = false, palette = FALLBACK,
+} = {}) {
   return new Promise((resolve) => {
+    // Named steps, so the render below reads as intent rather than as numbers.
+    // Derived from the terminal's own background and foreground when it will
+    // say what they are — see theme.js — and the old fixed dark palette when
+    // it will not.
+    const C = palette;
     let q = query;
     let sel = 0;
     let rows = [];
@@ -171,7 +166,7 @@ export function pick(prompts, { query = "", scope = null, screen = process.stdou
       rows.forEach((r, i) => {
         const chosen = i === sel;
         const surface = chosen ? C.selected : C.surface;
-        const dot = `${fg(HUE[r.agent] ?? C.muted)}●`;
+        const dot = `${HUE[r.agent] ?? fg(C.muted)}●`;
 
         // The right-hand label mirrors a browser suggestion: metadata normally,
         // and on the row you have landed on, the action Enter will take.

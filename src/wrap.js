@@ -129,6 +129,11 @@ export async function wrap(command, prompts, { scope = null } = {}) {
     return 2;
   }
 
+  // Asked once, before the agent exists. Probing later would mean writing an
+  // escape sequence into a live session and racing the agent for the reply.
+  const { probe } = await import("./theme.js");
+  const palette = await probe(process.stdout);
+
   let pty;
   try {
     pty = await import("node-pty");
@@ -146,7 +151,12 @@ export async function wrap(command, prompts, { scope = null } = {}) {
       cols: process.stdout.columns ?? 80,
       rows: process.stdout.rows ?? 24,
       cwd: process.cwd(),
-      env: process.env,
+      // The marker lets a nested invocation know it is already inside a
+      // wrapped session. With `aps install`, the alias exists in every shell
+      // the agent might spawn, so without this a shell-out to `claude` would
+      // build a second pty inside the first and put two interceptors on one
+      // keyboard.
+      env: { ...process.env, APS_WRAPPED: "1" },
     });
   } catch (err) {
     // A stack trace here would say "posix_spawnp failed" and nothing about
@@ -182,7 +192,7 @@ export async function wrap(command, prompts, { scope = null } = {}) {
       picking = true;
       // The picker uses the alternate screen buffer, so leaving it restores
       // whatever the agent had drawn — no repainting on our part.
-      const chosen = await pick(prompts, { scope, keep: true }).catch(() => null);
+      const chosen = await pick(prompts, { scope, keep: true, palette }).catch(() => null);
       picking = false;
       process.stdout.write(held.join(""));
       held.length = 0;

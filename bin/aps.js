@@ -49,6 +49,8 @@ const HELP = `aps — your prompts, across every AI CLI
   aps --agents           which agents were found on this machine
   aps --json <words>     machine-readable, for piping
 
+  aps install            alias your agents so ctrl-p just works
+  aps uninstall          take the aliases back out
   aps run <command>      run it with ctrl-p bound to the picker
   aps --pick             picker on the terminal, chosen prompt to stdout
   aps --hotkey           print the tmux and shell bindings to install
@@ -117,6 +119,13 @@ const argv = process.argv.slice(2);
  * whether the wrapper would recognise what you pressed, which is the actual
  * question being asked.
  */
+if (argv[0] === "install" || argv[0] === "uninstall") {
+  const mod = await import("../src/install.js");
+  const shell = argv.includes("--shell") ? argv[argv.indexOf("--shell") + 1] : undefined;
+  const fn = argv[0] === "install" ? mod.install : mod.uninstall;
+  process.exit(await fn({ shell, print: argv.includes("--print") }));
+}
+
 if (argv[0] === "--keys") {
   if (!process.stdin.isTTY) {
     console.error("aps --keys needs a terminal — run it directly, not through a pipe");
@@ -151,13 +160,25 @@ if (argv[0] === "run") {
     console.error("aps run needs something to run, e.g. `aps run claude`");
     process.exit(2);
   }
-  const { wrap } = await import("../src/wrap.js");
-  const all = await collect();
-  if (all.length === 0) {
-    console.error("no prompt history found — run `aps --agents` to see what was detected");
-    process.exit(1);
+  // Already inside a wrapped session: run the thing plainly. One interceptor
+  // per keyboard, and the outer one already has it.
+  if (process.env.APS_WRAPPED) {
+    const { spawn } = await import("node:child_process");
+    const child = spawn(command[0], command.slice(1), { stdio: "inherit" });
+    child.on("exit", (code) => process.exit(code ?? 0));
+    child.on("error", (err) => {
+      console.error(`aps: could not run ${command[0]} — ${err.message}`);
+      process.exit(127);
+    });
+  } else {
+    const { wrap } = await import("../src/wrap.js");
+    const all = await collect();
+    if (all.length === 0) {
+      console.error("no prompt history found — run `aps --agents` to see what was detected");
+      process.exit(1);
+    }
+    process.exit(await wrap(command, all, { scope: projectRoot() }));
   }
-  process.exit(await wrap(command, all, { scope: projectRoot() }));
 }
 
 const opts = { copy: false, limit: 40, agent: null, json: false, print: false, all: false, pick: false };
@@ -252,10 +273,13 @@ if (opts.pick) {
     console.error("--pick needs a keyboard: run it from a binding, not a pipe");
     process.exit(2);
   }
+  const screen = screenForPicker();
+  const { probe } = await import("../src/theme.js");
   const chosen = await pick(prompts, {
     query: terms.join(" "),
     scope: opts.all ? null : projectRoot(),
-    screen: screenForPicker(),
+    screen,
+    palette: await probe(screen),
   });
   // Nothing chosen exits non-zero so a binding can tell "escaped" from "picked
   // an empty line" and leave the command line untouched.
@@ -265,7 +289,12 @@ if (opts.pick) {
 }
 
 if (interactive) {
-  const chosen = await pick(prompts, { query: terms.join(" "), scope: opts.all ? null : projectRoot() });
+  const { probe } = await import("../src/theme.js");
+  const chosen = await pick(prompts, {
+    query: terms.join(" "),
+    scope: opts.all ? null : projectRoot(),
+    palette: await probe(process.stdout),
+  });
   if (!chosen) process.exit(0);
   toClipboard(chosen, () => {
     console.log(`copied  ${chosen.slice(0, 110)}${chosen.length > 110 ? "…" : ""}`);
