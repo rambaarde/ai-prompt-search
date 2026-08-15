@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/rambaarde/ai-prompt-search/compare/v0.6.0...v0.7.0) (2026-08-15)
+
+
+### Features
+
+* **tui:** a bordered, transparent panel, the way terminal pickers look ([61d719c](https://github.com/rambaarde/ai-prompt-search/commit/61d719c30e17a8244a54fcea3c2b8336ddcf10d9))
+
 ## [0.6.0](https://github.com/rambaarde/ai-prompt-search/compare/v0.5.1...v0.6.0) (2026-08-15)
 
 
