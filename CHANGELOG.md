@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/rambaarde/ai-prompt-search/compare/v0.9.0...v0.10.0) (2026-08-15)
+
+
+### Features
+
+* **scope:** one pane, one conversation ([34e4f17](https://github.com/rambaarde/ai-prompt-search/commit/34e4f17c08a528cfc8578434ff933a8fdb3f177f))
+
 ## [0.9.0](https://github.com/rambaarde/ai-prompt-search/compare/v0.8.0...v0.9.0) (2026-08-15)
 
 
