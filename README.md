@@ -6,6 +6,10 @@
 
 Stop pressing ↑ two hundred times. Type three words, hit enter, it is on your clipboard.
 
+<img src="docs/demo.gif" alt="Searching prompts from the terminal, and from inside a running agent with ctrl-p" width="900">
+
+<sub>Recorded from the real CLI against a fixture history — the prompts in the demo are invented, so the recording carries nobody's actual work. <a href="docs/demo.tape">docs/demo.tape</a> reproduces it.</sub>
+
 </div>
 
 ```sh
@@ -121,8 +125,19 @@ a pipe is a tool you cannot compose with anything.
 aps install             # then just keep typing `claude`, `codex`, `opencode`
 ```
 
-That writes one alias per agent you actually have, into your shell's rc file,
-inside a fenced block it can rewrite or remove. Nobody is going to retype their
+**Start your agent with your own launcher?** Name it, and it gets wrapped too:
+
+```sh
+aps install claude-start        # a shell function, an alias, any name you use
+```
+
+Detection can only see binaries on your `PATH`, and a launcher that injects your
+context or plugins is usually a shell function — invisible to it, and impossible
+for `aps run` to spawn by name. Named explicitly, it is run through your shell
+instead, which is the only thing that knows the function exists.
+
+That writes one alias per command, into your shell's rc file, inside a fenced
+block it can rewrite or remove. Nobody is going to retype their
 muscle memory as `aps run claude` — so it aliases the names you already use, and
 `aps uninstall` puts the file back. `aps install --print` shows the block without
 touching anything.
