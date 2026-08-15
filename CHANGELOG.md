@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/rambaarde/ai-prompt-search/compare/v0.7.0...v0.8.0) (2026-08-15)
+
+
+### Features
+
+* **install:** wrap custom launchers, and record the README demo ([34eb65e](https://github.com/rambaarde/ai-prompt-search/commit/34eb65e4f5265494e7200b7f68d3d9dcfa0bb0d9))
+
 ## [0.7.0](https://github.com/rambaarde/ai-prompt-search/compare/v0.6.0...v0.7.0) (2026-08-15)
 
 
