@@ -1,0 +1,105 @@
+# Conventional commits on main accumulate into a Release PR that maintains
+# CHANGELOG.md and the package version. Merging that PR cuts the tag and the
+# GitHub Release, and publishes to npm in the SAME run — a GITHUB_TOKEN-created
+# release event cannot trigger a separate workflow, so `on: release: published`
+# would never fire.
+#
+# Both jobs live in this one file on purpose. npm's trusted publisher is pinned
+# to the workflow filename, and for OIDC npm reads the TOP-LEVEL workflow of the
+# run. Splitting the publish half into its own file — even called via `uses:` —
+# would make npm see the caller instead and refuse the publish.
+#
+# There is deliberately no NPM_TOKEN. Trusted Publishing mints a short-lived
+# OIDC token for this exact workflow in this exact repository, so nothing
+# long-lived exists to leak or rotate — and npm is restricting the bypass-2FA
+# tokens that were the only other way to publish unattended.
+#
+# One-time setup on npmjs.com, which cannot be done from here:
+#   ai-prompt-search → Settings → Trusted Publisher → GitHub Actions
+#   repository: rambaarde/ai-prompt-search   workflow: publish.yml
+name: publish
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  publish:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # to mint the OIDC token npm verifies
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: https://registry.npmjs.org
+
+      # The suite is the gate. A release that ships a broken reader is worse
+      # than a late one, and this package has no build step to catch it later.
+      - run: npm test
+
+      # A proxy for "the CLI ships" is not the same as the CLI shipping. Assert
+      # on the actual tarball: the entry point must be in it, and nothing that
+      # only belongs in the repository may be.
+      - name: assert the tarball before it leaves
+        run: |
+          node -e '
+            const { execSync } = require("node:child_process");
+            const meta = JSON.parse(execSync("npm pack --dry-run --json").toString())[0];
+            const files = meta.files.map((f) => f.path);
+            const fail = (m) => { console.error("REFUSING TO PUBLISH: " + m); process.exit(1); };
+            if (!files.includes("bin/aps.js")) fail("bin/aps.js is not in the tarball");
+            if (!files.some((f) => f.startsWith("src/"))) fail("src/ is not in the tarball");
+            const junk = files.filter((f) => f.startsWith("test/") || f.startsWith(".github/"));
+            if (junk.length) fail("must not publish: " + junk.join(", "));
+            const pkg = require("./package.json");
+            if (Object.keys(pkg.dependencies ?? {}).length) fail("a runtime dependency appeared");
+            console.log(`ok: ${meta.entryCount} files, ${(meta.size / 1024).toFixed(1)}kb, 0 deps`);
+          '
+
+      # Provenance requires a PUBLIC source repository — npm rejects the bundle
+      # with 422 otherwise, AFTER signing it, so the failure arrives late and
+      # reads like an auth problem when it is not.
+      - name: publish
+        run: npm publish --access public ${{ github.event.repository.private && ' ' || '--provenance' }}
+
+      - name: verify it is actually installable
+        run: |
+          VERSION='${{ needs.release-please.outputs.version }}'
+          for i in 1 2 3 4 5 6; do
+            npm view "ai-prompt-search@$VERSION" version >/dev/null 2>&1 && break
+            echo "waiting for the registry to serve $VERSION ($i)"; sleep 10
+          done
+          WORK=$(mktemp -d)
+          cd "$WORK"
+          npm init -y >/dev/null
+          npm install "ai-prompt-search@$VERSION" --prefer-online
+          # Run the installed binary, not the checkout: bin paths are the thing
+          # most likely to be right in the repo and wrong once packaged.
+          ./node_modules/.bin/aps --help | head -1
+          ./node_modules/.bin/aps --agents >/dev/null
+          echo "ok: ai-prompt-search@$VERSION installs and runs"

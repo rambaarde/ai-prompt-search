@@ -1,0 +1,49 @@
+# Tests that only run on one laptop are half a test suite. This package reads
+# files written by other programs, on three operating systems, so the matrix is
+# not ceremony: a path assumption that holds on macOS and breaks on Windows is
+# exactly the bug that would otherwise ship.
+#
+# workflow_dispatch is here because release-please opens its Release PR using
+# GITHUB_TOKEN, and GitHub deliberately does not start workflows from that
+# token. Without a way to run this on demand, a Release PR can arrive with no
+# checks at all and never satisfy a required one.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: ["20", "22", "24"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm test
+
+  no-dependencies:
+    # The install story defended mechanically rather than by intention. A single
+    # runtime dependency is the difference between `npx` and a dependency tree.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          node -e '
+            const pkg = require("./package.json");
+            const deps = Object.keys(pkg.dependencies ?? {});
+            if (deps.length) {
+              console.error("runtime dependencies appeared: " + deps.join(", "));
+              process.exit(1);
+            }
+            console.log("ok: zero runtime dependencies");
+          '
