@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/rambaarde/ai-prompt-search/compare/v0.4.0...v0.4.1) (2026-08-15)
+
+
+### Bug Fixes
+
+* **run:** recognise ctrl-p in every encoding a terminal may send ([1019247](https://github.com/rambaarde/ai-prompt-search/commit/1019247aa1fa9f29b09e388ee5144e75ed0436b8))
+
 ## [0.4.0](https://github.com/rambaarde/ai-prompt-search/compare/v0.3.1...v0.4.0) (2026-08-15)
 
 
