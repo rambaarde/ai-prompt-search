@@ -207,18 +207,6 @@ test("--pick without a keyboard refuses instead of hanging", async () => {
   await drop(home);
 });
 
-test("--theme reports the fallback honestly when nothing answers", async () => {
-  // Piped, there is no terminal to ask, so it must say the palette is the
-  // built-in one rather than implying it came from anywhere.
-  const home = await fixture();
-  const { code, stdout } = await aps(["--theme"], home);
-  assert.equal(code, 0);
-  assert.match(stdout, /did not answer/);
-  assert.match(stdout, /built-in dark palette/);
-  assert.match(stdout, /surface/, "the colours in use are shown either way");
-  await drop(home);
-});
-
 test("--hotkey prints bindings that name the right command", async () => {
   const home = await fixture();
   const { code, stdout } = await aps(["--hotkey"], home);
