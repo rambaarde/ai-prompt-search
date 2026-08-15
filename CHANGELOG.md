@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.1](https://github.com/rambaarde/ai-prompt-search/compare/v0.10.0...v0.10.1) (2026-08-15)
+
+
+### Bug Fixes
+
+* **tui:** close on escape immediately, not half a second later ([3aed78f](https://github.com/rambaarde/ai-prompt-search/commit/3aed78f4b34ed37c131d379c372c6b464298b17c))
+
 ## [0.10.0](https://github.com/rambaarde/ai-prompt-search/compare/v0.9.0...v0.10.0) (2026-08-15)
 
 
