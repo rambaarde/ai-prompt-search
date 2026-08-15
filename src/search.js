@@ -14,6 +14,7 @@
  * what I typed" actually means; fuzzy matching would trade a precise tool for
  * an approximate one, and there is no ranking signal here worth guessing with.
  */
+import { relative, isAbsolute } from "node:path";
 
 /**
  * Filter out things that are not prompts worth getting back.
@@ -36,14 +37,22 @@ export const flatten = (t) => t.replace(/\s+/g, " ").trim();
 /**
  * Does this prompt belong to the directory you are standing in?
  *
- * A prefix match, so a prompt typed in a subdirectory of the repository still
- * counts as the repository's. The trailing separator matters: without it,
- * `/code/atlas` would also claim `/code/atlas-backup`.
+ * Containment, so a prompt typed in a subdirectory of the repository still
+ * counts as the repository's.
+ *
+ * Asked through `path.relative` rather than a string prefix. The prefix version
+ * shipped and was wrong on Windows: it compared `C:\code\atlas\src` against
+ * `C:\code\atlas` + `/`, so every prompt from a subdirectory silently vanished
+ * — on the one platform none of us runs. `relative` also settles the case a
+ * prefix has to special-case by hand, where `/code/atlas` must not claim
+ * `/code/atlas-backup`: it answers `..\..\atlas-backup`, and anything starting
+ * with `..` is somewhere else.
  */
 export function inScope(cwd, root) {
   if (!root) return true;
   if (!cwd) return false;
-  return cwd === root || cwd.startsWith(root.endsWith("/") ? root : `${root}/`);
+  const rel = relative(root, cwd);
+  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
 }
 
 /**
