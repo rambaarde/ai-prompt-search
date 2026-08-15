@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.5.0](https://github.com/rambaarde/ai-prompt-search/compare/v0.4.1...v0.5.0) (2026-08-15)
+
+
+### Features
+
+* adapt to the terminal theme, and alias the agents ([951dc60](https://github.com/rambaarde/ai-prompt-search/commit/951dc609d0cad029b6ae7ce45d7f37ba45d923d2))
+* **install:** alias the agents, so nobody has to type `aps run` ([bb2db1f](https://github.com/rambaarde/ai-prompt-search/commit/bb2db1fb5f22815c4c033651b14e01284133afe5))
+* **theme:** take the panel's colours from the terminal, not from me ([4ec84db](https://github.com/rambaarde/ai-prompt-search/commit/4ec84dbb7dddd0996c8ad00e424f12e07c7c0929))
+
 ## [0.4.1](https://github.com/rambaarde/ai-prompt-search/compare/v0.4.0...v0.4.1) (2026-08-15)
 
 
