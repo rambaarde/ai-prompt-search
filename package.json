@@ -1,6 +1,6 @@
 {
   "name": "ai-prompt-search",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Search and reuse every prompt you have typed, across every AI coding CLI on your machine. No required dependencies.",
   "keywords": [
     "prompt",
