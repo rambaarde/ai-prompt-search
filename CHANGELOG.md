@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/rambaarde/ai-prompt-search/compare/v0.3.1...v0.4.0) (2026-08-15)
+
+
+### Features
+
+* **run:** ctrl-p opens the picker inside a running agent ([ee58e52](https://github.com/rambaarde/ai-prompt-search/commit/ee58e52580bae478ad70a4dc645c5b191a235afd))
+
 ## [0.3.1](https://github.com/rambaarde/ai-prompt-search/compare/v0.3.0...v0.3.1) (2026-08-15)
 
 
