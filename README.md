@@ -167,10 +167,11 @@ you name yourself works the same way:
 
 ```sh
 aps install my-launcher
-``` Nobody is going to retype their
-muscle memory as `aps run claude` — so it aliases the names you already use, and
-`aps uninstall` puts the file back. `aps install --print` shows the block without
-touching anything.
+```
+
+Nobody is going to retype their muscle memory as `aps run claude`, so this
+aliases the names you already use. `aps uninstall` puts the file back, and
+`aps install --print` shows the block without touching anything.
 
 An alias rather than a shim on `PATH`, deliberately: a shim would also intercept
 scripts and CI, where a keyboard interceptor has no business being.
