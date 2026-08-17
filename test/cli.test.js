@@ -268,6 +268,21 @@ test("under herdr, aps run does not wrap — the agent stays visible to the pane
   await drop(home);
 });
 
+// The rc block skips itself when APS_WRAPPED is set, and a custom launcher is
+// a shell function, so its alias is `aps run zsh -ic claude-start`. Miss the
+// flag on this path and that shell sources the rc, defines the alias again,
+// and the name resolves to the alias: claude-start relaunches itself until you
+// hit ctrl-c, printing the herdr notice on every pass.
+test("the passthrough marks the session wrapped, so an alias cannot call itself", async () => {
+  const home = await fixture();
+  const { code, stdout } = await aps(["run", "sh", "-c", "echo flag=$APS_WRAPPED"], home, undefined, {
+    HERDR_ENV: "1",
+    HERDR_CONFIG_PATH: join(home, "no-such-config.toml"),
+  });
+  assert.equal(code, 0);
+  assert.match(stdout, /flag=1/, "the rc block reads this to stand down inside a session");
+  await drop(home);
+});
 test("the herdr notice stops once the binding is in the config", async () => {
   const home = await fixture();
   const config = join(home, "herdr.toml");
