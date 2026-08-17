@@ -50,11 +50,11 @@ Set Theme { "name": "demo", "background": "#0d0d10", "foreground": "#d5d5db", "c
 # wrapper, no ctrl-p, and nothing to film. The drafts store is emptied so the
 # recording starts from nothing and every draft on screen is one it makes.
 Hide
-Type "export HOME=/tmp/aps-sandbox && cd /tmp/aps-sandbox/code/atlas && unset CLAUDE_CODE_CHILD_SESSION CLAUDECODE CLAUDE_CODE_ENTRYPOINT HERDR_ENV APS_WRAPPED && rm -f $HOME/.aps/drafts.jsonl && export PS1='❯ ' && clear"
+Type "REAL=$HOME && export HOME=/tmp/aps-sandbox && cd /tmp/aps-sandbox/code/atlas && unset CLAUDE_CODE_CHILD_SESSION CLAUDECODE CLAUDE_CODE_ENTRYPOINT HERDR_ENV APS_WRAPPED && rm -f $HOME/.aps/drafts.jsonl && export PS1='❯ ' && clear"
 Enter
 Sleep 1s
 
-Type "aps run claude --continue"
+Type "aps run env HOME=$REAL claude --continue"
 Enter
 Sleep 34s   # long enough for the transient usage notice to clear
 Show
