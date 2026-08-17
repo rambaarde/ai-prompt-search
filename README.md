@@ -6,6 +6,9 @@
 
 Stop pressing ↑ two hundred times. Type three words, hit enter, it is on your clipboard.
 
+**A prompt library you never file into** — it is already full, because your agents wrote it.
+Keep the ones you never sent with <kbd>ctrl</kbd>+<kbd>s</kbd>. Nothing to tag, name, or tidy.
+
 <img src="docs/demo.gif" alt="Searching prompts from the terminal, and from inside a running agent with ctrl-p" width="900">
 
 <sub><code>ctrl-p</code> inside a real Claude Code session: find an old prompt and send it in, add a few words without sending, then <code>ctrl-s</code> to keep that unsent line — it comes back as a <code>draft</code> row — and <code>ctrl-x</code> to clear the box. The picker is scoped to a throwaway project seeded with invented prompts, so the recording carries nobody's actual work — the same scoping that keeps your other projects off your screen. <a href="docs/demo.tape">docs/demo.tape</a> is the script.</sub>
