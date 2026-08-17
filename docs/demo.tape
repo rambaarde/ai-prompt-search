@@ -11,6 +11,9 @@
 #
 # The picker is scoped to a throwaway project seeded with invented prompts, so
 # it cannot show real work: the scope excludes every other project by design.
+#
+# Four acts, in the order you meet them: find an old prompt, keep a new one you
+# have not sent, clear the line, and get the kept one back.
 
 Output claude-demo.mp4
 Output claude-demo.gif
@@ -27,9 +30,10 @@ Set Theme { "name": "demo", "background": "#0d0d10", "foreground": "#d5d5db", "c
 
 # Set the stage off camera. The unset matters only because this was recorded
 # from inside another agent session, which would otherwise print a warning no
-# ordinary user ever sees.
+# ordinary user ever sees. The drafts store is emptied so the recording starts
+# from nothing and every draft on screen is one the recording itself makes.
 Hide
-Type "cd /tmp/aps-sandbox/code/atlas && unset CLAUDE_CODE_CHILD_SESSION CLAUDECODE CLAUDE_CODE_ENTRYPOINT && export PS1='❯ ' && clear"
+Type "cd /tmp/aps-sandbox/code/atlas && unset CLAUDE_CODE_CHILD_SESSION CLAUDECODE CLAUDE_CODE_ENTRYPOINT && rm -f $HOME/.aps/drafts.jsonl && export PS1='❯ ' && clear"
 Enter
 Sleep 1s
 
@@ -40,15 +44,46 @@ Show
 
 Sleep 1500ms
 
-# The hotkey, mid-conversation.
+# ── One: the hotkey, mid-conversation. ───────────────────────────────────────
 Ctrl+P
-Sleep 2s
+Sleep 1800ms
 
 Type "migration"
-Sleep 2s
+Sleep 1800ms
 
 Down
+Sleep 1s
+
+Enter
+Sleep 2s
+
+# ── Two: a line you have not sent is a draft. ────────────────────────────────
+# Typed on the end of the prompt just inserted, which is what actually happens:
+# you pull an old prompt back and then adjust it for today.
+Type " and backfill the existing rows"
+Sleep 1500ms
+
+Ctrl+P
+Sleep 2500ms   # long enough to read the draft row along the bottom
+
+# ctrl-s keeps it. Nothing on screen changes, which is the point: it is a
+# save, not an interruption.
+Ctrl+S
+Sleep 1800ms
+
+# ── Three: ctrl-x clears the agent's line. ───────────────────────────────────
+Ctrl+P
 Sleep 1200ms
+
+Ctrl+X
+Sleep 2500ms   # the input box empties, on screen
+
+# ── Four: the kept draft is now just another prompt. ─────────────────────────
+Ctrl+P
+Sleep 1200ms
+
+Type "backfill"
+Sleep 2500ms   # the row comes back labelled `draft`
 
 Enter
 Sleep 3s
