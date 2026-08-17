@@ -6,6 +6,9 @@
 
 Stop pressing ↑ two hundred times. Type three words, hit enter, it is on your clipboard.
 
+**A prompt library you never file into** — it is already full, because your agents wrote it.
+Keep the ones you never sent with <kbd>ctrl</kbd>+<kbd>s</kbd>. Nothing to tag, name, or tidy.
+
 <img src="docs/demo.gif" alt="Searching prompts from the terminal, and from inside a running agent with ctrl-p" width="900">
 
 <sub><code>ctrl-p</code> inside a real Claude Code session: find an old prompt and send it in, add a few words without sending, then <code>ctrl-s</code> to keep that unsent line — it comes back as a <code>draft</code> row — and <code>ctrl-x</code> to clear the box. The picker is scoped to a throwaway project seeded with invented prompts, so the recording carries nobody's actual work — the same scoping that keeps your other projects off your screen. <a href="docs/demo.tape">docs/demo.tape</a> is the script.</sub>
@@ -102,6 +105,38 @@ And it turns out the data for that is already sitting in a much simpler place:
 Those first two **are** the up-arrow buffer, on disk, one record per prompt. No transcript
 parsing, no filtering assistant text back out. Reading them makes the whole problem small:
 twenty thousand prompts indexed in well under a second.
+
+---
+
+## Nor a prompt manager
+
+It is a prompt library. It is just not one you fill in.
+
+Every prompt manager asks you to curate: name this, tag that, sort it into a
+collection, keep it tidy. They end up empty, because filing is work you do today
+for a benefit you might get in a month. This one is **already full** — twenty
+thousand entries on the day you install it — because your agents have been
+writing it for you the whole time. There is no empty state to fill in, no import
+step, and nothing to keep up with.
+
+The one thing you can add by hand is the one thing nothing else records: the
+prompt you typed and never sent. That is <kbd>ctrl</kbd>+<kbd>s</kbd>, one key,
+and it joins the same corpus.
+
+So the shelves are missing on purpose:
+
+| Not here | Because |
+|---|---|
+| Folders, tags, collections | Filing is maintenance. Your prompts are already grouped by project and by time |
+| Favourites, pinning | `×20` next to a row already tells you what you actually reuse — measured, not declared |
+| Titles and descriptions | Turns a prompt into a document you have to tend |
+| Editing a saved prompt | Then it needs versions, and then it needs a UI. Save another draft |
+| Variables and templates | That is prompt *authoring*. This is prompt *recall* — a different product |
+| Accounts, sync, sharing | Nothing leaves your machine. Prompts carry client names and paths |
+
+The test any new feature has to pass: **if you stopped using this for three
+months, would it be worse when you came back?** Search over your history gets
+better — it simply knows more. A folder tree rots. Only the first kind ships.
 
 ---
 
