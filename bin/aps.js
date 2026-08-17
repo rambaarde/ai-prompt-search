@@ -145,7 +145,14 @@ command = 'p=$(aps --pick) && herdr pane send-text "$HERDR_ACTIVE_PANE_ID" "$p"'
 width = 76
 height = 16
 
-# Then: herdr server reload-config`,
+# Then: herdr server reload-config
+#
+# On macOS, Option is not Alt until the terminal is told to send it, so alt-p
+# arrives as π and the binding never fires. One line, once:
+#
+#   Ghostty      macos-option-as-alt = true
+#   iTerm2       Preferences → Profiles → Keys → Left Option key: Esc+
+#   Terminal.app Settings → Profiles → Keyboard → Use Option as Meta key`,
 };
 
 const argv = process.argv.slice(2);
@@ -217,7 +224,16 @@ if (argv[0] === "run") {
     // stdio is inherited rather than piped, which is also what keeps the agent
     // in this pane's foreground process group — the list herdr reads to work
     // out which agent a pane is running.
-    const child = spawn(command[0], command.slice(1), { stdio: "inherit" });
+    //
+    // APS_WRAPPED is what the installed rc block reads to skip itself, so it
+    // has to be set on every path that runs the command, not only the pty one.
+    // The alias for a shell function runs `zsh -ic <name>`, and that shell
+    // sources the rc: without the flag the alias is defined again, the name
+    // resolves to it, and `claude-start` relaunches itself without end.
+    const child = spawn(command[0], command.slice(1), {
+      stdio: "inherit",
+      env: { ...process.env, APS_WRAPPED: "1" },
+    });
     // Awaited rather than left to an exit handler, because handlers do not stop
     // the module: execution ran on into the picker below, and whichever of the
     // two called process.exit first decided the exit code. `aps run` would

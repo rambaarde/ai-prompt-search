@@ -37,7 +37,7 @@ aps                  # the picker, in any terminal
 
 <div align="center">
 
-![tests](https://img.shields.io/badge/tests-59%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-60%20passing-brightgreen)
 ![runtime deps](https://img.shields.io/badge/runtime%20deps-0-blue)
 ![node](https://img.shields.io/badge/node-%E2%89%A520-339933)
 ![license](https://img.shields.io/badge/license-Apache--2.0-blue)
