@@ -265,6 +265,13 @@ export async function wrap(command, load, { scope = null } = {}) {
       // Written as input to the agent, which sees it exactly as if typed. The
       // text is already flattened to one line, so it cannot submit early.
       term.write(chosen.text);
+      // And folded into the draft, because the agent's line now holds it. This
+      // is the one text that reaches the input box without passing the
+      // keyboard, so without this the draft under-reports from here on: pick a
+      // prompt, add a few words, and ctrl-s would keep only the words you
+      // typed while ctrl-x cleared only those, leaving the rest of the line
+      // behind. Recording the demo is what made that visible.
+      typed = feed(typed, Buffer.from(chosen.text, "utf8"));
     } else if (chosen.action === "save") {
       // Failing to save is not worth interrupting a session over, and there is
       // nowhere to report it: the agent has the screen back by now.
