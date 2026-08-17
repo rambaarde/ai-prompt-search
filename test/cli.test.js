@@ -250,6 +250,9 @@ test("--hotkey herdr prints a binding that replaces the wrapper", async () => {
   assert.match(stdout, /aps --pick/, "the binding must call the mode that prints to stdout");
   assert.match(stdout, /HERDR_ACTIVE_PANE_ID/, "the prompt goes to the pane under the popup");
   assert.ok(!stdout.includes("display-popup"), "asking for herdr should not print tmux");
+  // A binding that is dead on arrival for every stock Mac is worse than none:
+  // Option is not Alt until the terminal sends it, so alt-p arrives as a glyph.
+  assert.match(stdout, /macos-option-as-alt/, "say the one line that makes the key fire on a Mac");
   await drop(home);
 });
 

@@ -145,7 +145,14 @@ command = 'p=$(aps --pick) && herdr pane send-text "$HERDR_ACTIVE_PANE_ID" "$p"'
 width = 76
 height = 16
 
-# Then: herdr server reload-config`,
+# Then: herdr server reload-config
+#
+# On macOS, Option is not Alt until the terminal is told to send it, so alt-p
+# arrives as π and the binding never fires. One line, once:
+#
+#   Ghostty      macos-option-as-alt = true
+#   iTerm2       Preferences → Profiles → Keys → Left Option key: Esc+
+#   Terminal.app Settings → Profiles → Keyboard → Use Option as Meta key`,
 };
 
 const argv = process.argv.slice(2);
