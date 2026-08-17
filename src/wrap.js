@@ -81,6 +81,35 @@ export function isHotkey(buf) {
   return false;
 }
 
+/**
+ * When the layer above the agent can already bind the key itself.
+ *
+ * herdr identifies the agent in a pane by reading the processes in that pane's
+ * foreground process group. A pty moves the agent onto a tty of its own, where
+ * nothing outside can see it — so `aps run claude` under herdr leaves a pane
+ * whose only visible process is `node`, the agents tab stays empty, and the
+ * status detection that reads a pane has nothing to read. Hiding the thing a
+ * multiplexer exists to show you is a bad trade for a hotkey that multiplexer
+ * can bind itself, so under herdr the agent is run directly and `aps --hotkey
+ * herdr` is the other half.
+ *
+ * Running it directly rather than through a pty is what puts it back where
+ * herdr is looking: a child sharing our stdio stays in the pane's foreground
+ * process group, which is exactly what herdr enumerates.
+ *
+ * tmux is deliberately not here. It has no agent panel to empty, so wrapping
+ * costs nothing there, and quietly taking the wrapper away from people already
+ * using it would be a regression to fix a problem they do not have.
+ *
+ * @returns {"wrapped"|"herdr"|null} why to skip the pty, or null to wrap
+ */
+export function passthrough(env = process.env) {
+  // One interceptor per keyboard: an outer wrapper already holds this one.
+  if (env.APS_WRAPPED) return "wrapped";
+  if (env.HERDR_ENV) return "herdr";
+  return null;
+}
+
 const MISSING = `aps: the hotkey wrapper needs an optional module that is not installed.
 
     npm i -g ai-prompt-search      # reinstall, which fetches it

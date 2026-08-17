@@ -21,11 +21,22 @@ import { promisify } from "node:util";
 const run = promisify(execFile);
 const BIN = join(dirname(fileURLToPath(import.meta.url)), "..", "bin", "aps.js");
 
+/**
+ * The environment a case gets, minus anything the machine running it happens
+ * to be sitting inside.
+ *
+ * Both of these change whether `aps run` wraps at all, so inheriting them means
+ * the suite passes or fails depending on whether you ran it inside herdr. That
+ * is the same trap as testing the hotkey only inside tmux: the environment
+ * quietly answers the question the test was asking.
+ */
+const { HERDR_ENV: _herdr, APS_WRAPPED: _wrapped, ...BASE_ENV } = process.env;
+
 /** Run aps with a fake HOME, capturing output instead of drawing a UI. */
-async function aps(args, home, cwd = undefined) {
+async function aps(args, home, cwd = undefined, env = {}) {
   try {
     const { stdout, stderr } = await run(process.execPath, [BIN, ...args], {
-      env: { ...process.env, HOME: home, USERPROFILE: home },
+      env: { ...BASE_ENV, HOME: home, USERPROFILE: home, ...env },
       ...(cwd ? { cwd } : {}),
     });
     return { code: 0, stdout, stderr };
@@ -224,6 +235,49 @@ test("--hotkey for one shell prints only that one", async () => {
   assert.ok(!stdout.includes("display-popup"), "asking for zsh should not print tmux");
   const bad = await aps(["--hotkey", "fish"], home);
   assert.equal(bad.code, 2, "an unsupported shell is a usage error, not silence");
+  await drop(home);
+});
+
+// herdr names the agent in a pane from that pane's foreground processes, so the
+// pty that makes ctrl-p work also makes the agent vanish from its agents tab.
+// Installing aps used to be enough to empty it. Under herdr the wrapper steps
+// aside and the binding below takes over.
+test("--hotkey herdr prints a binding that replaces the wrapper", async () => {
+  const home = await fixture();
+  const { code, stdout } = await aps(["--hotkey", "herdr"], home);
+  assert.equal(code, 0);
+  assert.match(stdout, /\[\[keys\.command\]\]/, "herdr binds commands in its own config");
+  assert.match(stdout, /aps --pick/, "the binding must call the mode that prints to stdout");
+  assert.match(stdout, /HERDR_ACTIVE_PANE_ID/, "the prompt goes to the pane under the popup");
+  assert.ok(!stdout.includes("display-popup"), "asking for herdr should not print tmux");
+  await drop(home);
+});
+
+test("under herdr, aps run does not wrap — the agent stays visible to the pane", async () => {
+  const home = await fixture();
+  const { code, stdout, stderr } = await aps(["run", "echo", "seen"], home, undefined, {
+    HERDR_ENV: "1",
+    HERDR_CONFIG_PATH: join(home, "no-such-config.toml"),
+  });
+  // Without the passthrough this refuses with "needs a terminal", because the
+  // wrapper cannot build a pty on a pipe. Running the command plainly is the
+  // whole fix: a child sharing our stdio stays in the pane's process group.
+  assert.equal(code, 0);
+  assert.match(stdout, /seen/);
+  assert.match(stderr, /--hotkey herdr/, "a hotkey that quietly disappears is worse than none");
+  await drop(home);
+});
+
+test("the herdr notice stops once the binding is in the config", async () => {
+  const home = await fixture();
+  const config = join(home, "herdr.toml");
+  await writeFile(config, "[[keys.command]]\ncommand = 'p=$(aps --pick) && herdr pane send-text'\n");
+  const { code, stderr } = await aps(["run", "echo", "seen"], home, undefined, {
+    HERDR_ENV: "1",
+    HERDR_CONFIG_PATH: config,
+  });
+  assert.equal(code, 0);
+  assert.equal(stderr, "", "nagging on every agent launch is its own kind of broken");
   await drop(home);
 });
 

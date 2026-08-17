@@ -16,6 +16,9 @@ import { search } from "../src/search.js";
 import { pick } from "../src/tui.js";
 import { spawn, execFileSync } from "node:child_process";
 import { platform } from "node:process";
+import { readFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { openSync } from "node:fs";
 import { WriteStream } from "node:tty";
 
@@ -33,6 +36,24 @@ function projectRoot() {
   } catch {
     return process.cwd();
   }
+}
+
+/**
+ * Say where the hotkey went, and stop saying it once it is back.
+ *
+ * Under herdr the wrapper steps aside so the agent stays visible to the pane
+ * (see `passthrough` in src/wrap.js). Left silent, that reads as a ctrl-p that
+ * simply stopped working one day, which is the worst shape a change can take.
+ * So this prints the one line that fixes it — and only while it needs fixing,
+ * because a notice on every single agent launch is its own kind of broken.
+ */
+async function herdrNotice() {
+  const path = process.env.HERDR_CONFIG_PATH
+    ?? join(homedir(), ".config", "herdr", "config.toml");
+  const config = await readFile(path, "utf8").catch(() => "");
+  if (config.includes("aps --pick")) return;
+  console.error("aps: herdr runs your agent directly, so its agents tab can see it.");
+  console.error("     for ctrl-p there, add the binding from: aps --hotkey herdr");
 }
 
 const HELP = `aps — your prompts, across every AI CLI
@@ -54,7 +75,7 @@ const HELP = `aps — your prompts, across every AI CLI
   aps uninstall          take the aliases back out
   aps run <command>      run it with ctrl-p bound to the picker
   aps --pick             picker on the terminal, chosen prompt to stdout
-  aps --hotkey           print the tmux and shell bindings to install
+  aps --hotkey           print the herdr, tmux and shell bindings to install
   aps --keys             what your terminal sends for a keypress
 
 In the picker: ↑↓ move · ⏎ copy and quit · esc quit · ctrl-u clear · ctrl-a scope
@@ -104,6 +125,27 @@ bindkey '^[p' aps-widget
 
   bash: `# ~/.bashrc — alt-p at a shell prompt.
 bind -x '"\\ep": "READLINE_LINE=$(aps --pick </dev/tty); READLINE_POINT=\${#READLINE_LINE}"'`,
+
+  herdr: `# ~/.config/herdr/config.toml — alt-p opens the picker over whatever is
+# running, and types the prompt you choose straight into it.
+#
+# Under herdr this is the binding, not \`aps run\`. herdr works out which agent
+# a pane holds by reading that pane's own processes, and a wrapper's pty moves
+# the agent onto a tty of its own where herdr cannot see it — an empty agents
+# tab is a worse trade than a keybinding. So \`aps run\` steps aside here and
+# this does the same job from above, exactly as the tmux popup does.
+#
+# HERDR_ACTIVE_PANE_ID is the pane that was focused when the key was pressed,
+# which is the one underneath the popup. send-text is literal, so quotes,
+# backticks and $ arrive as themselves rather than as shell syntax.
+[[keys.command]]
+key = "alt+p"
+type = "popup"
+command = 'p=$(aps --pick) && herdr pane send-text "$HERDR_ACTIVE_PANE_ID" "$p"'
+width = 76
+height = 16
+
+# Then: herdr server reload-config`,
 };
 
 const argv = process.argv.slice(2);
@@ -168,16 +210,26 @@ if (argv[0] === "run") {
     console.error("aps run needs something to run, e.g. `aps run claude`");
     process.exit(2);
   }
-  // Already inside a wrapped session: run the thing plainly. One interceptor
-  // per keyboard, and the outer one already has it.
-  if (process.env.APS_WRAPPED) {
-    const { spawn } = await import("node:child_process");
+  const { passthrough } = await import("../src/wrap.js");
+  const plain = passthrough();
+  if (plain) {
+    if (plain === "herdr") await herdrNotice();
+    // stdio is inherited rather than piped, which is also what keeps the agent
+    // in this pane's foreground process group — the list herdr reads to work
+    // out which agent a pane is running.
     const child = spawn(command[0], command.slice(1), { stdio: "inherit" });
-    child.on("exit", (code) => process.exit(code ?? 0));
-    child.on("error", (err) => {
-      console.error(`aps: could not run ${command[0]} — ${err.message}`);
-      process.exit(127);
-    });
+    // Awaited rather than left to an exit handler, because handlers do not stop
+    // the module: execution ran on into the picker below, and whichever of the
+    // two called process.exit first decided the exit code. `aps run` would
+    // report the picker's "no prompt history found" instead of the agent's own
+    // status, having pointlessly read every prompt on the way there.
+    process.exit(await new Promise((resolve) => {
+      child.on("exit", (code) => resolve(code ?? 0));
+      child.on("error", (err) => {
+        console.error(`aps: could not run ${command[0]} — ${err.message}`);
+        resolve(127);
+      });
+    }));
   } else {
     // History is not read here. Loading 23,000 prompts before the agent even
     // appears would put a second and a half between the command and the
@@ -200,9 +252,9 @@ for (let i = 0; i < argv.length; i++) {
   else if (a === "--pick") opts.pick = true;
   else if (a === "--hotkey") {
     const which = argv[i + 1] && !argv[i + 1].startsWith("-") ? argv[++i] : null;
-    const parts = which ? [HOTKEY[which]] : [HOTKEY.tmux, HOTKEY.zsh, HOTKEY.bash];
+    const parts = which ? [HOTKEY[which]] : [HOTKEY.herdr, HOTKEY.tmux, HOTKEY.zsh, HOTKEY.bash];
     if (parts.some((p) => !p)) {
-      console.error(`unknown shell: ${which} — try tmux, zsh or bash`);
+      console.error(`unknown shell: ${which} — try herdr, tmux, zsh or bash`);
       process.exit(2);
     }
     console.log(parts.join("\n\n"));
