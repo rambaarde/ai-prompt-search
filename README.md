@@ -27,6 +27,10 @@ exec zsh
 Type a few words · <kbd>↑</kbd><kbd>↓</kbd> to move · <kbd>enter</kbd> types it in ·
 <kbd>ctrl</kbd>+<kbd>a</kbd> widens the search · <kbd>esc</kbd> closes
 
+**Typed something and changed your mind?** It is still in the box, and nothing writes it down —
+history is only saved on <kbd>enter</kbd>. <kbd>ctrl</kbd>+<kbd>s</kbd> keeps it ·
+<kbd>ctrl</kbd>+<kbd>y</kbd> copies it · <kbd>ctrl</kbd>+<kbd>x</kbd> clears the line
+
 </div>
 
 Or on its own, without an agent running:
