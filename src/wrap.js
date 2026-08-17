@@ -31,6 +31,9 @@
  */
 import { pick } from "./tui.js";
 import { inScope } from "./search.js";
+import { EMPTY, feed, draftText, draftRaw } from "./draft.js";
+import { saveDraft } from "./sources.js";
+import { toClipboard } from "./clipboard.js";
 import { chmodSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
@@ -218,6 +221,15 @@ export async function wrap(command, load, { scope = null } = {}) {
   let session = null;
   let submittedAt = 0;
 
+  /**
+   * The line you have typed but not sent.
+   *
+   * Every byte headed for the agent is folded in on its way past, which is the
+   * only place in the system where an unsent prompt exists at all — no agent
+   * writes one down. See src/draft.js for what it can and cannot follow.
+   */
+  let typed = EMPTY;
+
   const learnSession = (prompts) => {
     if (session || !submittedAt) return;
     const mine = prompts
@@ -240,6 +252,34 @@ export async function wrap(command, load, { scope = null } = {}) {
   };
   process.stdout.on("resize", resize);
 
+  /**
+   * Carry out what the picker decided.
+   *
+   * The picker returns an intention rather than performing it, because it draws
+   * on a screen and knows nothing about the pty, the clipboard or the store.
+   * Everything that touches the world happens here.
+   */
+  const act = async (chosen) => {
+    if (!chosen) return;
+    if (chosen.action === "insert") {
+      // Written as input to the agent, which sees it exactly as if typed. The
+      // text is already flattened to one line, so it cannot submit early.
+      term.write(chosen.text);
+    } else if (chosen.action === "save") {
+      // Failing to save is not worth interrupting a session over, and there is
+      // nowhere to report it: the agent has the screen back by now.
+      await saveDraft(chosen.text, scope).catch(() => {});
+    } else if (chosen.action === "copy") {
+      await toClipboard(chosen.text);
+    } else if (chosen.action === "clear") {
+      // One backspace per character, rather than ctrl-u, because every input
+      // widget honours backspace and only some honour a kill-line. The count
+      // comes from the untrimmed draft so trailing spaces go too.
+      term.write("\x7f".repeat([...draftRaw(typed)].length));
+      typed = EMPTY;
+    }
+  };
+
   const onKey = async (buf) => {
     if (picking) return;
     if (isHotkey(buf)) {
@@ -252,15 +292,18 @@ export async function wrap(command, load, { scope = null } = {}) {
       learnSession(prompts);
       // The picker uses the alternate screen buffer, so leaving it restores
       // whatever the agent had drawn — no repainting on our part.
-      const chosen = await pick(prompts, { scope, session, keep: true }).catch(() => null);
+      const chosen = await pick(prompts, {
+        scope, session, keep: true, draft: draftText(typed) || null,
+      }).catch(() => null);
       picking = false;
       process.stdout.write(held.join(""));
       held.length = 0;
-      // Written as input to the agent, which sees it exactly as if typed. The
-      // text is already flattened to one line, so it cannot submit early.
-      if (chosen) term.write(chosen);
+      await act(chosen);
       return;
     }
+    // Before forwarding, not after: this is the only chance to see the line
+    // being built, and the agent never tells anyone what is in its input box.
+    typed = feed(typed, buf);
     // A Return submits a prompt. Note when, so the record that appears next can
     // be recognised as this pane's.
     if (buf.includes(0x0d) || buf.includes(0x0a)) submittedAt = Date.now() / 1000;
