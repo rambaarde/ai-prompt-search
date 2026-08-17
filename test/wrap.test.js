@@ -15,7 +15,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { isHotkey } from "../src/wrap.js";
+import { isHotkey, passthrough } from "../src/wrap.js";
 
 const bytes = (s) => Buffer.from(s, "latin1");
 
@@ -47,4 +47,19 @@ test("keys that are not ctrl-p are forwarded untouched", () => {
   assert.equal(isHotkey(bytes("\x1b[A")), false, "up arrow");
   assert.equal(isHotkey(bytes("\x1b")), false, "a bare escape");
   assert.equal(isHotkey(bytes("")), false, "nothing at all");
+});
+
+test("under herdr the agent is run directly, so herdr can still see it", () => {
+  // The bug this fixes: `aps install` aliases claude to `aps run claude`, the
+  // pty moves claude onto a tty of its own, and herdr — which names the agent
+  // in a pane from that pane's foreground processes — sees only `node`. Agents
+  // that showed up before installing aps stopped showing up after.
+  assert.equal(passthrough({ HERDR_ENV: "1" }), "herdr");
+  assert.equal(passthrough({ APS_WRAPPED: "1" }), "wrapped");
+  assert.equal(passthrough({}), null, "a plain terminal has nothing above the agent");
+  assert.equal(
+    passthrough({ TMUX: "/tmp/tmux-501/default,1,0" }),
+    null,
+    "tmux has no agent panel to empty, so it keeps the wrapper it already had",
+  );
 });
