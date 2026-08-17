@@ -51,7 +51,11 @@ const DIM = `${ESC}[2m`;
 const ACCENT = `${ESC}[34m`;
 
 /** Each agent gets a hue, taken from the palette your scheme already defines. */
-const HUE = { claude: `${ESC}[35m`, codex: `${ESC}[36m`, opencode: `${ESC}[33m` };
+const HUE = {
+  claude: `${ESC}[35m`, codex: `${ESC}[36m`, opencode: `${ESC}[33m`,
+  // Drafts are yours rather than an agent's, so they get their own colour too.
+  draft: `${ESC}[32m`,
+};
 
 /**
  * Printable width, ignoring the colour codes woven through a line.
@@ -78,11 +82,11 @@ const when = (at) =>
  * the screen, the answer goes to whoever asked.
  *
  * @param {Array} prompts every prompt read from disk
- * @param {{query?: string, scope?: string|null, screen?: NodeJS.WriteStream}} opts
- * @returns {Promise<string|null>} the chosen prompt, or null if cancelled
+ * @param {{query?: string, scope?: string|null, screen?: NodeJS.WriteStream, draft?: string|null}} opts
+ * @returns {Promise<{action: string, text: string}|null>} what to do, or null if cancelled
  */
 export function pick(prompts, {
-  query = "", scope = null, session = null, screen = process.stdout, keep = false,
+  query = "", scope = null, session = null, screen = process.stdout, keep = false, draft = null,
 } = {}) {
   return new Promise((resolve) => {
     let q = query;
@@ -154,7 +158,7 @@ export function pick(prompts, {
       const out = (s) => screen.write(`${pad}${s}\n`);
 
       // Biased a little above centre: a panel sitting dead-centre reads as low.
-      const height = (rows.length || 1) + 4;
+      const height = (rows.length || 1) + 4 + (draft ? 1 : 0);
       const top = Math.max(0, Math.floor((lines - height) / 2) - 1);
       for (let i = 0; i < top; i++) screen.write("\n");
 
@@ -211,6 +215,22 @@ export function pick(prompts, {
         }
       });
 
+      /**
+       * The line you have not sent yet.
+       *
+       * Shown rather than merely acted on, because the wrapper reconstructs it
+       * from keystrokes: seeing it is how you know it caught the right thing
+       * before you save it. It costs a row, and only when there is one.
+       */
+      if (draft) {
+        const keys = `${DIM}^s save  ^y copy  ^x clear${RESET}`;
+        const room = body - 7 - visible(keys) - 2;
+        const text = fit(draft.replace(/\n/g, " ⏎ "), Math.max(10, room));
+        const line = ` ${DIM}draft${RESET}  ${text}`;
+        const gap = " ".repeat(Math.max(1, inner - visible(line) - visible(keys) - 1));
+        out(`${DIM}│${RESET}${line}${gap}${keys} ${DIM}│${RESET}`);
+      }
+
       // The state that does not fit anywhere else goes into the bottom edge,
       // which costs no row of its own: which project, and the way out of it.
       const where = {
@@ -253,7 +273,8 @@ export function pick(prompts, {
         return finish(null);
       }
       if (key.name === "return") {
-        return finish(rows[sel]?.text ?? null);
+        const text = rows[sel]?.text;
+        return finish(text ? { action: "insert", text } : null);
       }
       if (key.name === "up" || (key.ctrl && key.name === "p")) sel = Math.max(sel - 1, 0);
       else if (key.name === "down" || (key.ctrl && key.name === "n")) sel = Math.min(sel + 1, rows.length - 1);
@@ -264,6 +285,11 @@ export function pick(prompts, {
       }
       else if (key.name === "backspace") { q = q.slice(0, -1); sel = 0; refilter(); }
       else if (key.ctrl && key.name === "u") { q = ""; sel = 0; refilter(); }
+      // The draft keys exist only while there is a draft, so nothing new is
+      // taken from the keyboard in a picker opened outside the wrapper.
+      else if (draft && key.ctrl && key.name === "s") return finish({ action: "save", text: draft });
+      else if (draft && key.ctrl && key.name === "y") return finish({ action: "copy", text: draft });
+      else if (draft && key.ctrl && key.name === "x") return finish({ action: "clear", text: draft });
       else if (ch && !key.ctrl && !key.meta && ch >= " ") { q += ch; sel = 0; refilter(); }
       else return;
       render();

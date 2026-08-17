@@ -18,7 +18,7 @@ import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { collect, detect, SOURCES } from "../src/sources.js";
+import { collect, detect, SOURCES, saveDraft } from "../src/sources.js";
 
 async function fixture({ claude = true, codex = true, opencode = true } = {}) {
   const home = await mkdtemp(join(tmpdir(), "aps-"));
@@ -192,7 +192,7 @@ test("detect finds exactly the agents present", async () => {
   const home = await fixture({ codex: false });
   const names = (await detect(home)).map((s) => s.name).sort();
   assert.deepEqual(names, ["claude", "opencode"]);
-  assert.equal(SOURCES.length, 3, "detect must consider every known source");
+  assert.equal(SOURCES.length, 4, "detect must consider every known source");
   await drop(home);
 });
 
@@ -201,5 +201,47 @@ test("collect can be narrowed to one agent", async () => {
   const rows = await collect(["codex"], home);
   assert.ok(rows.length > 0);
   assert.ok(rows.every((r) => r.agent === "codex"));
+  await drop(home);
+});
+
+// Drafts are the one source aps writes as well as reads. The point of storing
+// them in our own file, in the shape every reader returns, is that nothing
+// downstream needs to know they exist — so these check the seam, not the store.
+test("a saved draft comes back as an ordinary prompt", async () => {
+  const home = await fixture({ claude: false, codex: false, opencode: false });
+
+  assert.equal(await saveDraft("refactor the auth middleware", "/Users/x/code/atlas-web", home), true);
+  const rows = await collect([], home);
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].text, "refactor the auth middleware");
+  assert.equal(rows[0].agent, "draft", "a draft is yours, not any agent's");
+  assert.equal(rows[0].project, "atlas-web", "so project scoping works on it unchanged");
+  assert.ok(rows[0].at > 0, "and it is ordered against everything else by time");
+
+  await drop(home);
+});
+
+test("drafts append rather than replace, and blank ones are not kept", async () => {
+  // Append-only because the whole point is that you were about to lose it: a
+  // save that depends on rewriting the file is a save that can lose the rest.
+  const home = await fixture({ claude: false, codex: false, opencode: false });
+
+  await saveDraft("first thought", "/Users/x/code/atlas-web", home);
+  await saveDraft("second thought", "/Users/x/code/atlas-web", home);
+  assert.equal(await saveDraft("   ", "/Users/x/code/atlas-web", home), false);
+  assert.equal(await saveDraft("", "/Users/x/code/atlas-web", home), false);
+
+  const texts = (await collect([], home)).map((r) => r.text).sort();
+  assert.deepEqual(texts, ["first thought", "second thought"]);
+
+  await drop(home);
+});
+
+test("with nothing saved, drafts are absent rather than empty", async () => {
+  // The store is created on first save, so an untouched machine has no ~/.aps
+  // and `detect` must treat that the way it treats an uninstalled agent.
+  const home = await fixture({ claude: false, codex: false, opencode: false });
+  assert.deepEqual(await detect(home), []);
   await drop(home);
 });

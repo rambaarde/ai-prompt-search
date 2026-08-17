@@ -14,8 +14,8 @@
 import { collect, detect, SOURCES } from "../src/sources.js";
 import { search } from "../src/search.js";
 import { pick } from "../src/tui.js";
+import { toClipboard } from "../src/clipboard.js";
 import { spawn, execFileSync } from "node:child_process";
-import { platform } from "node:process";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -79,6 +79,7 @@ const HELP = `aps — your prompts, across every AI CLI
   aps --keys             what your terminal sends for a keypress
 
 In the picker: ↑↓ move · ⏎ copy and quit · esc quit · ctrl-u clear · ctrl-a scope
+With a draft:  ctrl-s keep it · ctrl-y copy it · ctrl-x clear the agent's line
 
 By default you only see prompts typed in the current project. Prompts from your
 other work stay out of sight until you ask for them.
@@ -329,18 +330,10 @@ if (prompts.length === 0) {
   process.exit(1);
 }
 
-/** Put text on the clipboard, and fall back to printing it if there is none. */
-function toClipboard(text, onDone) {
-  const cmd = platform === "darwin" ? "pbcopy" : platform === "win32" ? "clip" : "xclip";
-  const args = platform === "linux" ? ["-selection", "clipboard"] : [];
-  const child = spawn(cmd, args, { stdio: ["pipe", "ignore", "ignore"] });
-  child.on("error", () => {
-    // No clipboard tool is not a failure: print it so it can still be used.
-    console.log(text);
-    process.exit(0);
-  });
-  child.stdin.end(text);
-  child.on("close", onDone);
+/** Copy, or print it instead when the platform has no clipboard tool. */
+async function copyOrPrint(text, say) {
+  if (await toClipboard(text)) say();
+  else console.log(text);
 }
 
 if (opts.pick) {
@@ -355,8 +348,8 @@ if (opts.pick) {
   });
   // Nothing chosen exits non-zero so a binding can tell "escaped" from "picked
   // an empty line" and leave the command line untouched.
-  if (!chosen) process.exit(1);
-  process.stdout.write(chosen);
+  if (!chosen?.text) process.exit(1);
+  process.stdout.write(chosen.text);
   process.exit(0);
 }
 
@@ -365,10 +358,11 @@ if (interactive) {
     query: terms.join(" "),
     scope: opts.all ? null : projectRoot(),
   });
-  if (!chosen) process.exit(0);
-  toClipboard(chosen, () => {
-    console.log(`copied  ${chosen.slice(0, 110)}${chosen.length > 110 ? "…" : ""}`);
-  });
+  if (!chosen?.text) process.exit(0);
+  const text = chosen.text;
+  await copyOrPrint(text, () =>
+    console.log(`copied  ${text.slice(0, 110)}${text.length > 110 ? "…" : ""}`));
+  process.exit(0);
 } else {
 
 const scope = opts.all ? null : projectRoot();
@@ -388,12 +382,11 @@ if (opts.json) {
 
 if (opts.copy) {
   const best = rows[0].text;
-  toClipboard(best, () => {
-    console.error(`copied  ${best.slice(0, 110)}${best.length > 110 ? "…" : ""}`);
-  });
+  await copyOrPrint(best, () =>
+    console.error(`copied  ${best.slice(0, 110)}${best.length > 110 ? "…" : ""}`));
 } else {
   const dim = (s) => `\x1b[2m${s}\x1b[0m`;
-  const HUE = { claude: "\x1b[35m", codex: "\x1b[36m", opencode: "\x1b[33m" };
+  const HUE = { claude: "\x1b[35m", codex: "\x1b[36m", opencode: "\x1b[33m", draft: "\x1b[32m" };
   const width = Number(process.stdout.columns || 120);
 
   // Reversed: the newest row prints last, closest to where the prompt returns.

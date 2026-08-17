@@ -14,7 +14,7 @@
  * A source is deliberately allowed to be absent. Nobody has every agent
  * installed, and a missing directory is a normal state, not an error.
  */
-import { readFile, readdir, stat } from "node:fs/promises";
+import { readFile, readdir, stat, mkdir, appendFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 
@@ -204,6 +204,58 @@ async function partsText(dir) {
 }
 
 /**
+ * Drafts: `~/.aps/drafts.jsonl`
+ * `{ text, at (seconds), cwd }`
+ *
+ * The one file here that aps owns, and the only one it writes.
+ *
+ * A prompt you typed but never sent is not in any agent's history, because
+ * every agent writes that record on Return. Keeping it therefore needs storage
+ * of our own — and the shape of that storage is the interesting decision.
+ *
+ * Appending to `~/.claude/history.jsonl` instead was the obvious shortcut, and
+ * it would even put the draft in Claude's own up-arrow buffer. It is still the
+ * wrong call. aps is a reader of those files: a malformed line written into one
+ * breaks the agent's own history, the formats are undocumented and free to
+ * change under us, and it does not generalise — Claude keeps one file, Codex
+ * needs its session rollouts for the cwd, opencode uses a storage tree. Three
+ * writers against three private formats, to save one file of our own.
+ *
+ * As its own source it costs nothing extra: `prompt()` is the same shape every
+ * reader returns, so search, project scoping, `-a`, ordering and the picker all
+ * work on drafts the day the file appears, with no code that knows about them.
+ */
+async function drafts(base) {
+  const out = [];
+  for await (const d of jsonl(draftsFile(base))) {
+    if (typeof d.text === "string" && d.text.trim()) {
+      out.push(prompt("draft", d.at ?? 0, d.cwd, d.text));
+    }
+  }
+  return out;
+}
+
+const draftsDir = (base) => join(home(base), ".aps");
+const draftsFile = (base) => join(draftsDir(base), "drafts.jsonl");
+
+/**
+ * Keep a draft.
+ *
+ * Append-only, like every file this project reads. A draft is worth keeping
+ * precisely because you were about to lose it, so writing must not depend on
+ * rewriting what is already there.
+ *
+ * @returns {Promise<boolean>} false if there was nothing worth keeping
+ */
+export async function saveDraft(text, cwd, base) {
+  if (!text?.trim()) return false;
+  await mkdir(draftsDir(base), { recursive: true });
+  const record = { text: text.trim(), at: Date.now() / 1000, cwd: cwd ?? "" };
+  await appendFile(draftsFile(base), `${JSON.stringify(record)}\n`);
+  return true;
+}
+
+/**
  * Last path segment: `/Users/x/code/atlas-web` -> `atlas-web`.
  *
  * `basename` rather than splitting on "/", which on Windows left the project
@@ -216,6 +268,7 @@ export const SOURCES = [
   { name: "claude", label: "Claude Code", dir: (b) => join(home(b), ".claude"), read: claude },
   { name: "codex", label: "Codex", dir: (b) => join(home(b), ".codex"), read: codex },
   { name: "opencode", label: "opencode", dir: (b) => join(home(b), ".local", "share", "opencode"), read: opencode },
+  { name: "draft", label: "Drafts", dir: draftsDir, read: drafts },
 ];
 
 /**

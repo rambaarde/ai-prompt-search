@@ -37,7 +37,7 @@ aps                  # the picker, in any terminal
 
 <div align="center">
 
-![tests](https://img.shields.io/badge/tests-60%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-77%20passing-brightgreen)
 ![runtime deps](https://img.shields.io/badge/runtime%20deps-0-blue)
 ![node](https://img.shields.io/badge/node-%E2%89%A520-339933)
 ![license](https://img.shields.io/badge/license-Apache--2.0-blue)
@@ -201,6 +201,34 @@ for your platform `aps run` says so and points at the tmux binding instead.
 macOS it requires its own stdin to be a terminal — `tcgetattr/ioctl: Operation not supported on
 socket` — and being in the middle means handing it a pipe.</sub>
 
+### The prompt you did not send
+
+The half-written prompt you abandoned when you changed your mind is the one
+thing no agent records anywhere: history is written on Return, so a line still
+sitting in the input box has never touched disk.
+
+The wrapper is the only thing that can see it. It is already in the middle of
+the keyboard, so it keeps a running copy of the line being typed. Press
+**ctrl-p** with something unsent and the picker shows it, with three keys:
+
+```
+│ draft  refactor the auth middleware…  ^s save  ^y copy  ^x clear │
+```
+
+- <kbd>ctrl</kbd>+<kbd>s</kbd> keeps it — it joins your history as a `draft` and
+  is searchable from then on, in this project or any other
+- <kbd>ctrl</kbd>+<kbd>y</kbd> copies it to the clipboard
+- <kbd>ctrl</kbd>+<kbd>x</kbd> clears the agent's input line
+
+It is bytes on a wire, so it works the same in every CLI — nothing here knows
+whether the far end is Claude, Codex or opencode. The keys exist only while
+there is a draft, so the picker you open without an agent is unchanged.
+
+It tracks typing, backspace, `ctrl-u`, `ctrl-w` and paste. It deliberately does
+not emulate a terminal: recall an earlier prompt with the up arrow and the line
+now holds text that never came through the keyboard, so rather than offer you
+something you did not type, the draft goes quiet until your next Return.
+
 ### Or a binding, if you prefer no wrapper
 
 ```sh
@@ -233,6 +261,7 @@ $ aps --agents
 found   Claude Code  ~/.claude
 found   Codex        ~/.codex
 found   opencode     ~/.local/share/opencode
+found   Drafts       ~/.aps
 ```
 
 If the directory is there, it is read. Asking you to declare your agents is asking you to
@@ -261,8 +290,13 @@ and `go` are real things you typed and useless things to search for.
 - **Gemini CLI is not covered.** `~/.gemini/history/` exists but holds no prompt file I
   could verify — only project markers. Rather than claim coverage that does not work, it is
   absent. If you know where Gemini persists prompts, that is a welcome issue.
-- **Nothing is written.** This only ever reads. Your history files are not modified, moved,
-  or uploaded.
+- **Your agents' files are never written.** They are opened read-only, and never
+  modified, moved, or uploaded. The one file `aps` writes is its own:
+  `~/.aps/drafts.jsonl`, appended to when you save a draft, and created only if
+  you ever do. Appending to `~/.claude/history.jsonl` instead would have put
+  drafts in Claude's own up-arrow buffer, but a bad line written into a file we
+  do not own breaks the agent's history — and it does not generalise, since
+  every agent stores prompts differently.
 
 ---
 
