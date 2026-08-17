@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.11.0](https://github.com/rambaarde/ai-prompt-search/compare/v0.10.1...v0.11.0) (2026-08-17)
+
+
+### Features
+
+* **draft:** fold inserted prompts into the draft, and re-record the demo ([#41](https://github.com/rambaarde/ai-prompt-search/issues/41)) ([cbf0816](https://github.com/rambaarde/ai-prompt-search/commit/cbf081610099e4d128e97b669741cd87cad63485))
+* **draft:** keep the prompt you typed but never sent ([#37](https://github.com/rambaarde/ai-prompt-search/issues/37)) ([667e3f3](https://github.com/rambaarde/ai-prompt-search/commit/667e3f3764ed434785db0e9c7303d2e48ccc26ee))
+
+
+### Bug Fixes
+
+* **wrap:** mark the passthrough session wrapped, so an alias cannot loop ([#36](https://github.com/rambaarde/ai-prompt-search/issues/36)) ([a0b3f23](https://github.com/rambaarde/ai-prompt-search/commit/a0b3f23bae725f2083b0371cd74f585d275bcce1))
+* **wrap:** run the agent directly under herdr so it stays visible ([#34](https://github.com/rambaarde/ai-prompt-search/issues/34)) ([c9b1674](https://github.com/rambaarde/ai-prompt-search/commit/c9b167445ff7ddc51def034b04211a0a8cf36050))
+
 ## [0.10.1](https://github.com/rambaarde/ai-prompt-search/compare/v0.10.0...v0.10.1) (2026-08-15)
 
 
